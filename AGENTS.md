@@ -235,6 +235,30 @@ cargo check --features server
 cargo test
 ```
 
+### Browser integration test
+
+The repo now includes a browser-driven integration test that runs through `cargo test`.
+
+It:
+
+- starts a mock OpenClaw-style WebSocket gateway
+- writes a temporary OpenClaw config for Daneel
+- launches the real Dioxus fullstack app
+- opens the app in headless Chrome
+- verifies healthy and degraded UI states from the rendered browser DOM
+
+Use:
+
+```bash
+cargo test --test e2e_mock_gateway
+```
+
+Notes:
+
+- this is the preferred `T1.5` end-to-end browser test entrypoint
+- it does not depend on the developer's personal OpenClaw data
+- it requires `dx`, `npm`, and `google-chrome` on `PATH`
+
 ### Runtime smoke test
 
 Run the dev server:
@@ -353,8 +377,9 @@ As of the current scaffold:
 - the dashboard fetches gateway status through a Dioxus server function
 - the gateway status request reaches OpenClaw over loopback WebSocket
 - styling is loaded through the Dioxus asset pipeline
+- there is now a browser-driven cargo integration test using a mock gateway
 - there is no OpenClaw adapter yet
-- there are no snapshot, unit, or integration tests yet
+- there is not yet a full Rust unit/integration suite beyond the SSR harness and the mock-gateway browser path
 
 ## Development Guidance
 
@@ -422,3 +447,31 @@ cargo check
 ```
 
 If you change routing, rendering, or asset loading, also do a browser smoke test with `dx serve --web`.
+
+## Test Cadence
+
+Prefer a two-speed testing workflow while developing:
+
+- run the fast Rust tests often during implementation
+- run the heavier browser integration path before committing
+
+During normal development, use:
+
+```bash
+cargo test
+```
+
+Before committing code, make sure all formatting and warnings are cleaned up first, then run:
+
+```bash
+npm run build:css
+cargo fmt --all
+cargo check --features server
+cargo test --test e2e_mock_gateway
+```
+
+Expectations before commit:
+
+- code is formatted
+- warnings are removed, not ignored
+- the mock-gateway browser integration test passes

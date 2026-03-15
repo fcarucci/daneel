@@ -141,6 +141,13 @@ npm run build:css
 cargo fmt --all
 cargo check
 cargo check --features server
+cargo test
+```
+
+The browser integration path now also runs through Cargo:
+
+```bash
+cargo test --test e2e_mock_gateway
 ```
 
 ## Project Docs

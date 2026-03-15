@@ -64,6 +64,7 @@ Recommended first checks:
 npm run build:css
 cargo check
 cargo check --features server
+cargo test
 ```
 
 ## Development Workflow
@@ -108,9 +109,14 @@ npm run build:css
 cargo fmt --all
 cargo check
 cargo check --features server
+cargo test
 ```
 
-If you change rendering or route behavior, do a browser verification pass too.
+If you change rendering or route behavior, include the browser integration pass too:
+
+```bash
+cargo test --test e2e_mock_gateway
+```
 
 ## Pull Request Expectations
 

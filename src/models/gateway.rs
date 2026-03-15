@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "server"), allow(dead_code))]
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

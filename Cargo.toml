@@ -34,3 +34,5 @@ optional = true
 dioxus-history = "0.7.3"
 dioxus-router = "0.7.3"
 dioxus-ssr = "0.7.3"
+tempfile = "3"
+tungstenite = "0.28"

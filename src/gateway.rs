@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "server"), allow(dead_code))]
+
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -6,12 +8,18 @@ use std::{
 
 use dioxus::prelude::{ServerFnError, dioxus_fullstack, server};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
+
+#[cfg(feature = "server")]
+use serde_json::json;
 
 use crate::models::{
     agents::{AgentOverviewItem, AgentOverviewSnapshot},
-    gateway::{GatewayLevel, GatewayStatusSnapshot},
+    gateway::GatewayStatusSnapshot,
 };
+
+#[cfg(feature = "server")]
+use crate::models::gateway::GatewayLevel;
 
 #[derive(Clone, Debug, Deserialize)]
 struct OpenClawConfig {
@@ -117,6 +125,31 @@ fn default_gateway_port() -> u16 {
 }
 
 #[cfg(feature = "server")]
+fn connect_request(request_id: &str, token: &str) -> Value {
+    json!({
+        "type": "req",
+        "id": request_id,
+        "method": "connect",
+        "params": {
+            "minProtocol": 3,
+            "maxProtocol": 3,
+            "role": "operator",
+            "scopes": ["operator.read"],
+            "client": {
+                "id": "cli",
+                "version": env!("CARGO_PKG_VERSION"),
+                "displayName": "Daneel",
+                "platform": "web",
+                "mode": "probe"
+            },
+            "auth": {
+                "token": token
+            }
+        }
+    })
+}
+
+#[cfg(feature = "server")]
 async fn fetch_gateway_status_via_websocket(
     config: &LoadedGatewayConfig,
 ) -> Result<GatewayStatusSnapshot, String> {
@@ -134,29 +167,9 @@ async fn fetch_gateway_status_via_websocket(
 
     socket
         .send(Message::Text(
-            json!({
-                "type": "req",
-                "id": "connect-1",
-                "method": "connect",
-                "params": {
-                    "minProtocol": 3,
-                    "maxProtocol": 3,
-                    "role": "operator",
-                    "scopes": ["operator.read"],
-                    "client": {
-                        "id": "cli",
-                        "version": env!("CARGO_PKG_VERSION"),
-                        "displayName": "Daneel",
-                        "platform": "web",
-                        "mode": "probe"
-                    },
-                    "auth": {
-                        "token": config.token
-                    }
-                }
-            })
-            .to_string()
-            .into(),
+            connect_request("connect-1", &config.token)
+                .to_string()
+                .into(),
         ))
         .await
         .map_err(|error| format!("Could not send gateway connect request: {error}"))?;
@@ -258,29 +271,9 @@ async fn fetch_agent_overview_via_websocket(
 
     socket
         .send(Message::Text(
-            json!({
-                "type": "req",
-                "id": "connect-agents-1",
-                "method": "connect",
-                "params": {
-                    "minProtocol": 3,
-                    "maxProtocol": 3,
-                    "role": "operator",
-                    "scopes": ["operator.read"],
-                    "client": {
-                        "id": "cli",
-                        "version": env!("CARGO_PKG_VERSION"),
-                        "displayName": "Daneel",
-                        "platform": "web",
-                        "mode": "probe"
-                    },
-                    "auth": {
-                        "token": config.token
-                    }
-                }
-            })
-            .to_string()
-            .into(),
+            connect_request("connect-agents-1", &config.token)
+                .to_string()
+                .into(),
         ))
         .await
         .map_err(|error| format!("Could not send gateway connect request: {error}"))?;

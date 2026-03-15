@@ -143,6 +143,8 @@ Commands:
   sync-labels
   assign-poc [--assignee <login>]
   remap-poc-milestones
+  reconcile-poc-doc
+  find-task --task <Tn.n>
   set-project-status-workflow
   set-issue-status --issues <n,n,...> --status <status>
   repair-t0-numbering
@@ -319,6 +321,11 @@ function parsePocTasks(markdown) {
   return tasks;
 }
 
+function taskIdFromTitle(title) {
+  const match = title.match(/^\[POC V1\] (T\d+\.\d+) /);
+  return match ? match[1] : null;
+}
+
 function parseNumberedSection(markdown, heading) {
   const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = markdown.match(
@@ -486,6 +493,26 @@ async function assignPoc(options) {
   console.log(`Assigned ${issues.length} POC issues to ${assignee}.`);
 }
 
+async function addIssueToProject(projectId, contentId) {
+  const data = await graphql(
+    `
+    mutation($project:ID!, $content:ID!) {
+      addProjectV2ItemById(input:{projectId:$project, contentId:$content}) {
+        item {
+          id
+        }
+      }
+    }
+    `,
+    {
+      project: projectId,
+      content: contentId,
+    },
+  );
+
+  return data.addProjectV2ItemById.item.id;
+}
+
 async function projectData() {
   const { owner, repo } = repoParts();
   const number = projectNumber();
@@ -610,6 +637,142 @@ async function setProjectStatusWorkflow() {
   }
 
   console.log("Updated Project Status workflow to Backlog / Ready / In Progress / Blocked / Done.");
+}
+
+async function findTask(options) {
+  const taskId = options.task;
+  if (!taskId) {
+    throw new Error("find-task requires --task <Tn.n>.");
+  }
+
+  const prefix = `[POC V1] ${taskId} `;
+  const matches = (await allIssues()).filter(
+    (issue) => !issue.pull_request && issue.title.startsWith(prefix),
+  );
+
+  console.log(
+    JSON.stringify(
+      matches.map((issue) => ({
+        number: issue.number,
+        state: issue.state,
+        title: issue.title,
+      })),
+      null,
+      2,
+    ),
+  );
+}
+
+async function reconcilePocDoc() {
+  const { owner, repo } = repoParts();
+  const markdown = await readFile(
+    "docs/milestones/proof-of-concept-1/poc_v1_task_breakdown.md",
+    "utf8",
+  );
+  const tasks = parsePocTasks(markdown);
+  const milestones = await ensureMilestones();
+  const issues = (await allIssues()).filter(
+    (issue) => !issue.pull_request && issue.title.startsWith("[POC V1] "),
+  );
+  const byTitle = new Map(issues.map((issue) => [issue.title, issue]));
+  const byTaskId = new Map(
+    issues
+      .map((issue) => [taskIdFromTitle(issue.title), issue])
+      .filter(([taskId]) => taskId),
+  );
+
+  const project = (await projectData()).user.projectV2;
+  const statusField = project.fields.nodes.find((field) => field?.name === "Status");
+  const backlogOption = statusField?.options?.find((option) => option.name === "Backlog");
+  const projectItems = new Map(
+    project.items.nodes
+      .filter((item) => item.content?.__typename === "Issue")
+      .map((item) => [item.content.number, item.id]),
+  );
+
+  const created = [];
+  const renamed = [];
+
+  for (const [title, meta] of tasks.entries()) {
+    let issue = byTitle.get(title);
+    if (!issue) {
+      const taskId = meta.taskId;
+      const existingByTaskId = byTaskId.get(taskId);
+      if (existingByTaskId && existingByTaskId.title !== title) {
+        issue = await rest("PATCH", `/repos/${owner}/${repo}/issues/${existingByTaskId.number}`, {
+          title,
+        });
+        renamed.push({
+          number: issue.number,
+          from: existingByTaskId.title,
+          to: title,
+        });
+        byTitle.delete(existingByTaskId.title);
+        byTitle.set(title, issue);
+        byTaskId.set(taskId, issue);
+      }
+    }
+
+    if (!issue) {
+      issue = await rest("POST", `/repos/${owner}/${repo}/issues`, {
+        title,
+        labels: labelsForTask(meta.phase, title),
+        milestone: milestones.get(PHASE_MILESTONE[meta.phase]).number,
+        assignees: [owner],
+      });
+      created.push({ number: issue.number, title: issue.title });
+      byTitle.set(title, issue);
+      byTaskId.set(meta.taskId, issue);
+    } else {
+      await rest("PATCH", `/repos/${owner}/${repo}/issues/${issue.number}`, {
+        labels: labelsForTask(meta.phase, title),
+        milestone: milestones.get(PHASE_MILESTONE[meta.phase]).number,
+      });
+    }
+
+    let itemId = projectItems.get(issue.number);
+    if (!itemId) {
+      itemId = await addIssueToProject(project.id, issue.node_id);
+      projectItems.set(issue.number, itemId);
+    }
+
+    if (statusField && backlogOption && issue.state === "open") {
+      await graphql(
+        `
+        mutation($project:ID!, $item:ID!, $field:ID!, $option:String!) {
+          updateProjectV2ItemFieldValue(input:{projectId:$project, itemId:$item, fieldId:$field, value:{singleSelectOptionId:$option}}) {
+            projectV2Item { id }
+          }
+        }
+        `,
+        {
+          project: project.id,
+          item: itemId,
+          field: statusField.id,
+          option: backlogOption.id,
+        },
+      );
+    }
+  }
+
+  const stale = issues
+    .filter((issue) => !tasks.has(issue.title) && !tasks.has(`[POC V1] ${taskIdFromTitle(issue.title) || ""}`))
+    .map((issue) => ({
+      number: issue.number,
+      title: issue.title,
+    }));
+
+  console.log(
+    JSON.stringify(
+      {
+        created,
+        renamed,
+        stale,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 async function closeImplemented(options) {
@@ -925,6 +1088,8 @@ const commands = {
   "sync-labels": syncLabels,
   "assign-poc": () => assignPoc(options),
   "remap-poc-milestones": remapPocMilestones,
+  "reconcile-poc-doc": reconcilePocDoc,
+  "find-task": () => findTask(options),
   "set-project-status-workflow": setProjectStatusWorkflow,
   "set-issue-status": () => setIssueStatus(options),
   "repair-t0-numbering": repairT0Numbering,

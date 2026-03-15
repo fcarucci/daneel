@@ -218,6 +218,26 @@ Tests:
 
 ---
 
+## T1.5 Add browser-driven frontend testing against a mock gateway
+
+Purpose:
+
+- verify the real browser UX without depending on a live local OpenClaw instance
+
+Output:
+
+- automated browser-driven test suite that runs Daneel against a mock gateway process with deterministic test data
+
+Tests:
+
+- start Daneel in test mode against the mock gateway
+- open `/` and verify the gateway status card and navbar status pill render expected mock state
+- open `/agents` and verify expected agent tiles, active indicators, and counts render from mock data
+- verify degraded gateway data produces the expected operator-facing error state
+- verify the suite runs headlessly and independently of the developer's personal OpenClaw data
+
+---
+
 # Phase 2: Server Function Backbone
 
 ## T2.1 Add the first live gateway connectivity slice
@@ -769,32 +789,33 @@ Tests:
 3. T0.3
 4. T1.1
 5. T1.4
-6. T2.1
-7. T2.2
-8. T2.3
-9. T3.1
-10. T3.2
-11. T3.3
-12. T3.4
-13. T3.5
-14. T3.6
-15. T3.7
-16. T4.1
-17. T4.2
-18. T4.3
-19. T1.2
-20. T1.3
-21. T5.1
-22. T5.2
-23. T5.3
-24. T5.4
-25. T5.5
-26. T6.1
-27. T6.2
-28. T6.3
-29. T7.1
-30. T7.2
-31. T7.3
+6. T1.5
+7. T2.1
+8. T2.2
+9. T2.3
+10. T3.1
+11. T3.2
+12. T3.3
+13. T3.4
+14. T3.5
+15. T3.6
+16. T3.7
+17. T4.1
+18. T4.2
+19. T4.3
+20. T1.2
+21. T1.3
+22. T5.1
+23. T5.2
+24. T5.3
+25. T5.4
+26. T5.5
+27. T6.1
+28. T6.2
+29. T6.3
+30. T7.1
+31. T7.2
+32. T7.3
 
 ## Smallest Useful Vertical Slice
 
@@ -805,21 +826,23 @@ If we want the absolute minimum path before the full polish pass:
 3. T0.3
 4. T1.1
 5. T1.4
-6. T2.1
-7. T2.2
-8. T3.1
-9. T3.2
-10. T3.3
-11. T3.4
-12. T3.5
-13. T3.6
-14. T4.1
-15. T4.3
-16. T5.1
-17. T5.2
-18. T5.3
-19. T5.4
-20. T6.2
+6. T1.5
+7. T2.1
+8. T2.2
+9. T3.1
+10. T3.2
+11. T3.3
+12. T3.4
+13. T3.5
+14. T3.6
+15. T4.1
+16. T4.3
+17. T5.1
+18. T5.2
+19. T5.3
+20. T5.4
+21. T6.2
+22. T7.3
 
 ## POC Success Demo Script
 
