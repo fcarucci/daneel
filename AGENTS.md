@@ -59,6 +59,7 @@ Important files and folders:
 - `src/components/`: shared shell UI pieces
 - `src/pages/`: route-level page components
 - `assets/main.css`: app styling
+- `scripts/github-admin.mjs`: GitHub labels, milestones, assignments, and project admin helper
 - `docs/`: requirements, design, and milestone planning
 - `development_setup.md`: local toolchain notes
 
@@ -136,6 +137,45 @@ Verify the server-enabled fullstack build too:
 ```bash
 cargo check --features server
 ```
+
+## GitHub Administration
+
+Use the dedicated repo admin script for GitHub maintenance instead of ad hoc shell snippets:
+
+```bash
+node scripts/github-admin.mjs help
+```
+
+The script reads auth from:
+
+- `GITHUB_TOKEN`
+- `GITHUB_PERSONAL_ACCESS_TOKEN`
+- `~/.env` as a fallback for `GITHUB_PERSONAL_ACCESS_TOKEN`
+
+Typical commands:
+
+```bash
+node scripts/github-admin.mjs sync-labels
+node scripts/github-admin.mjs remap-poc-milestones
+node scripts/github-admin.mjs set-project-status-workflow
+node scripts/github-admin.mjs assign-poc --assignee fcarucci
+node scripts/github-admin.mjs close-implemented --commit 062d615
+node scripts/github-admin.mjs report
+```
+
+There is also an npm alias:
+
+```bash
+npm run github:admin -- help
+```
+
+For Codex approval hygiene, prefer the narrow reusable command prefix:
+
+```text
+node scripts/github-admin.mjs
+```
+
+That keeps future GitHub admin actions under a single predictable command instead of repeated approvals for generic scripting commands.
 
 ## Run Commands
 

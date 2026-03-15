@@ -3,7 +3,8 @@
     "build:css": "npx @tailwindcss/cli -i ./styles/app.css -o ./assets/main.css --minify",
     "watch:css": "node scripts/watch-css.mjs",
     "dev": "bash scripts/dev.sh 4127 127.0.0.1",
-    "start": "bash scripts/dev.sh 4127 127.0.0.1"
+    "start": "bash scripts/dev.sh 4127 127.0.0.1",
+    "github:admin": "node scripts/github-admin.mjs"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.2.1",
