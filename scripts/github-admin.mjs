@@ -147,6 +147,7 @@ Commands:
   set-issue-status --issues <n,n,...> --status <status>
   repair-t0-numbering
   audit-poc-consistency
+  complete-issue --issue <n> --commit <sha> --note <text>
   complete-t0 --commit <sha>
   close-implemented [--commit <sha>]
   report
@@ -724,6 +725,39 @@ async function completeT0(options) {
   );
 }
 
+async function completeIssue(options) {
+  const { owner, repo } = repoParts();
+  const issueNumber = Number(options.issue);
+  const commit = options.commit;
+  const note = options.note;
+
+  if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+    throw new Error("complete-issue requires --issue <n>.");
+  }
+  if (!commit) {
+    throw new Error("complete-issue requires --commit <sha>.");
+  }
+  if (!note) {
+    throw new Error("complete-issue requires --note <text>.");
+  }
+
+  const commitUrl = `https://github.com/${owner}/${repo}/commit/${commit}`;
+  await rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+    body:
+      `Implemented in [${commit}](${commitUrl}).\n\nWhat landed:\n- ${note}\n\nThis issue is now complete in the repository state referenced above.`,
+  });
+  await rest("PATCH", `/repos/${owner}/${repo}/issues/${issueNumber}`, {
+    state: "closed",
+  });
+
+  await setIssueStatus({
+    issues: String(issueNumber),
+    status: "Done",
+  });
+
+  console.log(`Commented on, closed, and marked done for issue #${issueNumber}.`);
+}
+
 async function repairT0Numbering() {
   const { owner, repo } = repoParts();
   const issues = (await allIssues()).filter(
@@ -895,6 +929,7 @@ const commands = {
   "set-issue-status": () => setIssueStatus(options),
   "repair-t0-numbering": repairT0Numbering,
   "audit-poc-consistency": auditPocConsistency,
+  "complete-issue": () => completeIssue(options),
   "complete-t0": () => completeT0(options),
   "close-implemented": () => closeImplemented(options),
   report,

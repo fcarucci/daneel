@@ -3,6 +3,8 @@ mod gateway;
 mod models;
 mod pages;
 mod router;
+#[cfg(test)]
+mod test_support;
 
 use dioxus::prelude::*;
 

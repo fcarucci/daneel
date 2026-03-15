@@ -728,7 +728,10 @@ name = "daneel"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "dioxus-history",
+ "dioxus-router",
  "dioxus-server",
+ "dioxus-ssr",
  "futures-util",
  "serde",
  "serde_json",

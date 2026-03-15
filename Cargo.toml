@@ -29,3 +29,8 @@ optional = true
 [dependencies.tokio-tungstenite]
 version = "0.28"
 optional = true
+
+[dev-dependencies]
+dioxus-history = "0.7.3"
+dioxus-router = "0.7.3"
+dioxus-ssr = "0.7.3"

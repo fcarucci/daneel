@@ -214,7 +214,7 @@ Output:
 Tests:
 
 - smoke test: a simple component renders through the shared harness
-- smoke test: fixture-backed dashboard render works in test mode
+- smoke test: dashboard route render works in test mode
 
 ---
 

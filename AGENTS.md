@@ -138,6 +138,12 @@ Verify the server-enabled fullstack build too:
 cargo check --features server
 ```
 
+Run the Rust test suite:
+
+```bash
+cargo test
+```
+
 ## GitHub Administration
 
 Use the dedicated repo admin script for GitHub maintenance instead of ad hoc shell snippets:
@@ -217,6 +223,8 @@ Notes:
 
 There is not yet a formal Rust test suite, so validation is currently a mix of compile checks and runtime smoke testing.
 
+The repository now includes a small frontend SSR test harness for route rendering in `src/test_support.rs`.
+
 ### Minimum validation
 
 ```bash
@@ -224,6 +232,7 @@ npm run build:css
 cargo fmt --all
 cargo check
 cargo check --features server
+cargo test
 ```
 
 ### Runtime smoke test
