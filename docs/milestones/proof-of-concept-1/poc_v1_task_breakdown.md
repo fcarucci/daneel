@@ -52,7 +52,6 @@ The POC is complete when:
 
 This breakdown is feasible for a first vertical slice, but the following delivery rules should be enforced to keep risk low:
 
-- fixture-driven development should start early, not near the end
 - graph rendering should start with deterministic SVG layout, not a force-directed system
 - local relationship metadata must be treated as optional hints, not authoritative gateway truth
 - the first live experience should rely on server functions and manual refresh before adding any persistent live transport
@@ -116,24 +115,7 @@ Tests:
 
 ---
 
-## T0.3 Create stable fixtures before adapter implementation
-
-Purpose:
-
-- make parser, graph, and UI development deterministic from the start
-
-Output:
-
-- fixture directory for gateway status, agents, bindings, sessions, local relationship hints, and graph snapshots
-
-Tests:
-
-- fixture validation test: all fixtures deserialize into the corresponding internal test models
-- snapshot test: canonical graph fixture remains stable across refactors
-
----
-
-## T0.4 Choose the graph rendering strategy
+## T0.3 Choose the graph rendering strategy
 
 Purpose:
 
@@ -776,7 +758,7 @@ Output:
 Tests:
 
 - manual check: local startup instructions are accurate
-- manual check: expected mock or real gateway fixture produces the documented dashboard state
+- manual check: expected gateway state produces the documented dashboard behavior
 
 ---
 
@@ -785,35 +767,34 @@ Tests:
 1. T0.1
 2. T0.2
 3. T0.3
-4. T0.4
-5. T1.1
-6. T1.4
-7. T2.1
-8. T2.2
-9. T2.3
-10. T3.1
-11. T3.2
-12. T3.3
-13. T3.4
-14. T3.5
-15. T3.6
-16. T3.7
-17. T4.1
-18. T4.2
-19. T4.3
-20. T1.2
-21. T1.3
-22. T5.1
-23. T5.2
-24. T5.3
-25. T5.4
-26. T5.5
-27. T6.1
-28. T6.2
-29. T6.3
-30. T7.1
-31. T7.2
-32. T7.3
+4. T1.1
+5. T1.4
+6. T2.1
+7. T2.2
+8. T2.3
+9. T3.1
+10. T3.2
+11. T3.3
+12. T3.4
+13. T3.5
+14. T3.6
+15. T3.7
+16. T4.1
+17. T4.2
+18. T4.3
+19. T1.2
+20. T1.3
+21. T5.1
+22. T5.2
+23. T5.3
+24. T5.4
+25. T5.5
+26. T6.1
+27. T6.2
+28. T6.3
+29. T7.1
+30. T7.2
+31. T7.3
 
 ## Smallest Useful Vertical Slice
 
@@ -822,24 +803,23 @@ If we want the absolute minimum path before the full polish pass:
 1. T0.1
 2. T0.2
 3. T0.3
-4. T0.4
-5. T1.1
-6. T1.4
-7. T2.1
-8. T2.2
-9. T3.1
-10. T3.2
-11. T3.3
-12. T3.4
-13. T3.5
-14. T3.6
-15. T4.1
-16. T4.3
-17. T5.1
-18. T5.2
-19. T5.3
-20. T5.4
-21. T6.2
+4. T1.1
+5. T1.4
+6. T2.1
+7. T2.2
+8. T3.1
+9. T3.2
+10. T3.3
+11. T3.4
+12. T3.5
+13. T3.6
+14. T4.1
+15. T4.3
+16. T5.1
+17. T5.2
+18. T5.3
+19. T5.4
+20. T6.2
 
 ## POC Success Demo Script
 

@@ -120,6 +120,21 @@ const IMPLEMENTED_ISSUES = {
   },
 };
 
+const T0_IMPLEMENTED_ISSUES = {
+  1: {
+    comment:
+      "the Phase 0 foundation note in `docs/milestones/proof-of-concept-1/t0_foundation_decisions.md`\n- explicit node, edge, status, and provenance semantics for the POC graph\n- clear guidance on what the UI may and may not claim from the underlying data",
+  },
+  2: {
+    comment:
+      "the Phase 0 foundation note in `docs/milestones/proof-of-concept-1/t0_foundation_decisions.md`\n- the minimal `GatewayAdapter` capability contract for the first slice\n- the initial shared model surface the adapter should stabilize for later implementation work",
+  },
+  4: {
+    comment:
+      "the Phase 0 foundation note in `docs/milestones/proof-of-concept-1/t0_foundation_decisions.md`\n- the deterministic SVG rendering decision for POC V1\n- layout and verification constraints that keep the first graph slice stable and testable",
+  },
+};
+
 function usage() {
   console.log(`Usage:
   node scripts/github-admin.mjs <command> [options]
@@ -129,6 +144,10 @@ Commands:
   assign-poc [--assignee <login>]
   remap-poc-milestones
   set-project-status-workflow
+  set-issue-status --issues <n,n,...> --status <status>
+  repair-t0-numbering
+  audit-poc-consistency
+  complete-t0 --commit <sha>
   close-implemented [--commit <sha>]
   report
 
@@ -297,6 +316,25 @@ function parsePocTasks(markdown) {
   }
 
   return tasks;
+}
+
+function parseNumberedSection(markdown, heading) {
+  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = markdown.match(
+    new RegExp(`## ${escapedHeading}\\n\\n([\\s\\S]*?)(?:\\n## |\\n# |$)`),
+  );
+  if (!match) {
+    return [];
+  }
+
+  return match[1]
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^\d+\.\s+T\d+\.\d+$/.test(line))
+    .map((line) => {
+      const [, number, taskId] = line.match(/^(\d+)\.\s+(T\d+\.\d+)$/);
+      return { number: Number(number), taskId };
+    });
 }
 
 function addUnique(list, item) {
@@ -588,6 +626,230 @@ async function closeImplemented(options) {
   console.log(`Commented on and closed ${Object.keys(IMPLEMENTED_ISSUES).length} implemented issues.`);
 }
 
+async function setIssueStatus(options) {
+  const issuesArg = options.issues;
+  const statusName = options.status;
+  if (!issuesArg || !statusName) {
+    throw new Error("set-issue-status requires --issues <n,n,...> and --status <status>.");
+  }
+
+  const requestedIssues = issuesArg
+    .split(",")
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  if (!requestedIssues.length) {
+    throw new Error("No valid issue numbers were provided.");
+  }
+
+  const data = await projectData();
+  const project = data.user.projectV2;
+  const statusField = project.fields.nodes.find((field) => field?.name === "Status");
+  if (!statusField?.options) {
+    throw new Error("Project Status field was not found.");
+  }
+
+  const option = statusField.options.find((entry) => entry.name === statusName);
+  if (!option) {
+    throw new Error(`Unknown status option: ${statusName}`);
+  }
+
+  const projectItems = new Map(
+    project.items.nodes
+      .filter((item) => item.content?.__typename === "Issue")
+      .map((item) => [item.content.number, item.id]),
+  );
+
+  const updated = [];
+  for (const issueNumber of requestedIssues) {
+    const itemId = projectItems.get(issueNumber);
+    if (!itemId) {
+      continue;
+    }
+
+    await graphql(
+      `
+      mutation($project:ID!, $item:ID!, $field:ID!, $option:String!) {
+        updateProjectV2ItemFieldValue(input:{projectId:$project, itemId:$item, fieldId:$field, value:{singleSelectOptionId:$option}}) {
+          projectV2Item { id }
+        }
+      }
+      `,
+      {
+        project: project.id,
+        item: itemId,
+        field: statusField.id,
+        option: option.id,
+      },
+    );
+    updated.push(issueNumber);
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        status: statusName,
+        updatedIssues: updated,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function completeT0(options) {
+  const { owner, repo } = repoParts();
+  const commit = options.commit;
+  if (!commit) {
+    throw new Error("complete-t0 requires --commit <sha>.");
+  }
+  const commitUrl = `https://github.com/${owner}/${repo}/commit/${commit}`;
+
+  for (const [issueNumber, issue] of Object.entries(T0_IMPLEMENTED_ISSUES)) {
+    await rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+      body:
+        `Implemented in [${commit}](${commitUrl}).\n\nWhat landed:\n- ${issue.comment}\n\nThis completes the corresponding T0 foundation decision work in the repository docs.`,
+    });
+    await rest("PATCH", `/repos/${owner}/${repo}/issues/${issueNumber}`, {
+      state: "closed",
+    });
+  }
+
+  await setIssueStatus({
+    issues: Object.keys(T0_IMPLEMENTED_ISSUES).join(","),
+    status: "Done",
+  });
+
+  console.log(
+    `Commented on, closed, and marked done for ${Object.keys(T0_IMPLEMENTED_ISSUES).length} T0 issues.`,
+  );
+}
+
+async function repairT0Numbering() {
+  const { owner, repo } = repoParts();
+  const issues = (await allIssues()).filter(
+    (issue) => !issue.pull_request && issue.title.startsWith("[POC V1] T0."),
+  );
+
+  const removed = issues.find(
+    (issue) => issue.title === "[POC V1] T0.3 Create stable fixtures before adapter implementation",
+  );
+  const renamed = issues.find(
+    (issue) => issue.title === "[POC V1] T0.4 Choose the graph rendering strategy",
+  );
+
+  if (renamed) {
+    await rest("PATCH", `/repos/${owner}/${repo}/issues/${renamed.number}`, {
+      title: "[POC V1] T0.3 Choose the graph rendering strategy",
+    });
+  }
+
+  if (removed) {
+    await graphql(
+      `
+      mutation($issue:ID!) {
+        deleteIssue(input:{issueId:$issue}) {
+          clientMutationId
+        }
+      }
+      `,
+      { issue: removed.node_id },
+    );
+  }
+
+  const refreshed = (await allIssues()).filter(
+    (issue) => !issue.pull_request && issue.title.startsWith("[POC V1] T0."),
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        deletedIssue: removed ? { number: removed.number, title: removed.title } : null,
+        renamedIssue: renamed
+          ? {
+              number: renamed.number,
+              title: "[POC V1] T0.3 Choose the graph rendering strategy",
+            }
+          : null,
+        currentT0Issues: refreshed.map((issue) => ({
+          number: issue.number,
+          state: issue.state,
+          title: issue.title,
+        })),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function auditPocConsistency() {
+  const markdown = await readFile(
+    "docs/milestones/proof-of-concept-1/poc_v1_task_breakdown.md",
+    "utf8",
+  );
+  const tasks = parsePocTasks(markdown);
+  const docTitles = [...tasks.keys()].sort();
+
+  const suggestedExecutionOrder = parseNumberedSection(markdown, "Suggested Execution Order");
+  const smallestUsefulVerticalSlice = parseNumberedSection(markdown, "Smallest Useful Vertical Slice");
+
+  function numberingIssues(entries, sectionName) {
+    const problems = [];
+    for (let index = 0; index < entries.length; index += 1) {
+      const expected = index + 1;
+      if (entries[index].number !== expected) {
+        problems.push({
+          section: sectionName,
+          expected,
+          found: entries[index].number,
+          taskId: entries[index].taskId,
+        });
+      }
+    }
+    return problems;
+  }
+
+  const githubIssues = (await allIssues()).filter(
+    (issue) => !issue.pull_request && issue.title.startsWith("[POC V1] "),
+  );
+  const githubTitles = githubIssues.map((issue) => issue.title).sort();
+
+  const docMissingOnGithub = docTitles.filter((title) => !githubTitles.includes(title));
+  const githubMissingInDoc = githubTitles.filter((title) => !docTitles.includes(title));
+
+  const duplicateGithubTitles = [...new Set(
+    githubTitles.filter((title, index) => githubTitles.indexOf(title) !== index),
+  )];
+
+  const t0Issues = githubIssues
+    .filter((issue) => issue.title.startsWith("[POC V1] T0."))
+    .map((issue) => ({ number: issue.number, title: issue.title }))
+    .sort((a, b) => a.number - b.number);
+
+  console.log(
+    JSON.stringify(
+      {
+        local: {
+          docTaskCount: docTitles.length,
+          numberingProblems: [
+            ...numberingIssues(suggestedExecutionOrder, "Suggested Execution Order"),
+            ...numberingIssues(smallestUsefulVerticalSlice, "Smallest Useful Vertical Slice"),
+          ],
+        },
+        github: {
+          pocIssueCount: githubIssues.length,
+          t0Issues,
+          docMissingOnGithub,
+          githubMissingInDoc,
+          duplicateGithubTitles,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 async function report() {
   const data = await projectData();
   const project = data.user.projectV2;
@@ -630,6 +892,10 @@ const commands = {
   "assign-poc": () => assignPoc(options),
   "remap-poc-milestones": remapPocMilestones,
   "set-project-status-workflow": setProjectStatusWorkflow,
+  "set-issue-status": () => setIssueStatus(options),
+  "repair-t0-numbering": repairT0Numbering,
+  "audit-poc-consistency": auditPocConsistency,
+  "complete-t0": () => completeT0(options),
   "close-implemented": () => closeImplemented(options),
   report,
 };

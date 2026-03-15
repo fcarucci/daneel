@@ -363,7 +363,7 @@ Planned next major areas from the design docs:
 - minimal adapter capability contract
 - broader server-function backbone
 - graph-oriented agents view
-- fixtures and deterministic testing
+- deterministic testing support
 
 ## File-Level Orientation
 
