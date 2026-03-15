@@ -1,0 +1,51 @@
+name: Bug Report
+description: Report a regression, defect, or unexpected behavior in Daneel.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include enough detail for someone else to reproduce it quickly.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect instead?
+      placeholder: Describe the bug and the expected result.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: Give the smallest clear path to reproduce the issue.
+      placeholder: |
+        1. Start the app with...
+        2. Open...
+        3. Click...
+        4. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Relevant environment details.
+      placeholder: |
+        OS:
+        Browser:
+        Rust:
+        Node:
+        Dioxus CLI:
+        OpenClaw setup:
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs, screenshots, or traces
+      description: Paste any useful logs or attach screenshots.
+      render: shell
+

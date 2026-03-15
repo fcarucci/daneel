@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Daneel Technical Design
+    url: https://github.com/fcarucci/daneel/blob/main/docs/daneel_technical_design.md
+    about: Review the current technical design before opening architecture questions.
+  - name: Daneel POC V1 Task Breakdown
+    url: https://github.com/fcarucci/daneel/blob/main/docs/milestones/proof-of-concept-1/poc_v1_task_breakdown.md
+    about: Check the active POC milestone plan before creating duplicate tasks.

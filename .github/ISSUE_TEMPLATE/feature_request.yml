@@ -1,0 +1,39 @@
+name: Feature Request
+description: Propose a product or engineering improvement for Daneel.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests are easiest to triage when they stay close to the current POC goals and product docs.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem or workflow gap are you trying to solve?
+      placeholder: Describe the need behind the request.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: Describe the change you want to see.
+      placeholder: Explain the desired behavior, UX, or technical capability.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope And Constraints
+      description: Note any constraints, design references, or milestones this should align with.
+      placeholder: Mention related docs, routes, gateway APIs, or milestone tasks.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Share any alternative approaches you considered.
+      placeholder: Optional.
+

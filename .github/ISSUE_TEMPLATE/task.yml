@@ -1,0 +1,44 @@
+name: Task
+description: Track a discrete implementation task or engineering follow-up.
+title: "[Task] "
+labels:
+  - task
+body:
+  - type: input
+    id: milestone
+    attributes:
+      label: Milestone
+      description: Which milestone should this task belong to?
+      placeholder: P2 Server Function Backbone
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What should this task accomplish?
+      placeholder: Describe the intended outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in scope and out of scope for this task?
+      placeholder: Capture boundaries clearly.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: List the conditions that define done.
+      placeholder: |
+        - ...
+        - ...
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Add links, implementation notes, or references.
+
