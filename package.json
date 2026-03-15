@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "build:css": "npx @tailwindcss/cli -i ./styles/app.css -o ./assets/main.css --minify",
+    "watch:css": "node scripts/watch-css.mjs",
+    "dev": "bash scripts/dev.sh 4127 127.0.0.1",
+    "start": "bash scripts/dev.sh 4127 127.0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.2.1",
+    "concurrently": "^9.2.1",
+    "tailwindcss": "^4.2.1"
+  }
+}

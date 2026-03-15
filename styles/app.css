@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@source "../src";
+
+@theme {
+  --font-sans: "Satoshi", "IBM Plex Sans", "Segoe UI", sans-serif;
+  --color-ink-0: #eff6ff;
+  --color-slate-300: #b7c4d6;
+  --color-slate-400: #9fb3c8;
+  --color-signal: #7cf1bf;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --app-bg:
+      radial-gradient(circle at top, rgba(52, 211, 153, 0.16), transparent 34%),
+      linear-gradient(180deg, #0b1528 0%, #07111f 48%, #040912 100%);
+    --rail-bg: #040c19;
+    --panel-bg: rgba(8, 16, 31, 0.82);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-height: 100%;
+    background: #040912;
+  }
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+    background: var(--app-bg);
+    color: var(--color-ink-0);
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+/* SPDX-License-Identifier: Apache-2.0 */

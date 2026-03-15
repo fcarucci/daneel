@@ -1,0 +1,177 @@
+use dioxus::prelude::*;
+
+use crate::gateway::get_agent_overview;
+use crate::models::agents::{AgentOverviewItem, AgentOverviewSnapshot};
+
+#[component]
+pub fn AgentsPage() -> Element {
+    let agent_overview = use_resource(|| async move { get_agent_overview().await });
+
+    rsx! {
+        section { class: "flex flex-col gap-5",
+            div { class: "flex flex-col gap-2",
+                p { class: "m-0 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-[var(--signal)]", "Graph View" }
+                p { class: "m-0 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base", "Inspect configured agents, heartbeat posture, and recent runtime activity from the live gateway snapshot." }
+            }
+            AgentOverviewSection { agent_overview }
+        }
+    }
+}
+
+#[component]
+fn AgentOverviewSection(
+    agent_overview: Resource<Result<AgentOverviewSnapshot, ServerFnError>>,
+) -> Element {
+    match &*agent_overview.read_unchecked() {
+        Some(Ok(snapshot)) => rsx! {
+            div { class: "grid grid-cols-1 gap-4 xl:grid-cols-3",
+                MetricCard {
+                    label: "Configured agents",
+                    value: snapshot.total_agents.to_string(),
+                    detail: "".to_string(),
+                }
+                MetricCard {
+                    label: "Active sessions",
+                    value: snapshot.total_active_sessions.to_string(),
+                    detail: "".to_string(),
+                }
+                MetricCard {
+                    label: "Recently active",
+                    value: snapshot.active_recent_agents.to_string(),
+                    detail: "".to_string(),
+                }
+            }
+            div { class: "mt-2 flex items-center gap-3",
+                p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-slate-400", "Agent tiles" }
+                p { class: "m-0 text-sm text-slate-400", "{snapshot.active_recent_agents}/{snapshot.total_agents} active in the last 10 minutes" }
+            }
+            div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4",
+                for agent in snapshot.agents.iter() {
+                    AgentCard { agent: agent.clone() }
+                }
+            }
+        },
+        Some(Err(error)) => rsx! {
+            article { class: "rounded-[1.6rem] border border-amber-400/20 bg-amber-400/10 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+                h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-amber-100", "Gateway lookup failed" }
+                p { class: "m-0 mt-3 text-sm leading-6 text-amber-100/90", "{error}" }
+                button {
+                    class: "mt-4 inline-flex items-center rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-medium text-slate-100 transition hover:border-white/20 hover:bg-white/8",
+                    onclick: move |_| {
+                        let mut agent_overview = agent_overview;
+                        agent_overview.restart();
+                    },
+                    "Retry"
+                }
+            }
+        },
+        None => rsx! {
+            article { class: "rounded-[1.6rem] border border-white/10 bg-[var(--panel-bg)] p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+                h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Loading agents" }
+                p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Requesting the current agent inventory from the OpenClaw gateway snapshot..." }
+            }
+        },
+    }
+}
+
+#[component]
+fn MetricCard(label: String, value: String, detail: String) -> Element {
+    rsx! {
+        article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+            p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--signal)]", "{label}" }
+            p { class: "m-0 mt-3 text-3xl font-semibold tracking-[-0.05em] text-white", "{value}" }
+            if !detail.is_empty() {
+                p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "{detail}" }
+            }
+        }
+    }
+}
+
+#[component]
+fn AgentCard(agent: AgentOverviewItem) -> Element {
+    let is_active_now = agent
+        .latest_activity_age_ms
+        .is_some_and(|age| age <= 600_000);
+    let tile_class = if is_active_now {
+        "group relative overflow-hidden rounded-[1.9rem] border border-emerald-300/35 bg-[linear-gradient(180deg,rgba(14,28,32,0.96),rgba(5,12,24,0.98))] px-5 py-5 shadow-[0_0_0_1px_rgba(110,231,183,0.14),0_0_42px_rgba(16,185,129,0.28),0_0_90px_rgba(16,185,129,0.08),0_24px_64px_rgba(2,6,23,0.42)] backdrop-blur-xl"
+    } else {
+        "group relative overflow-hidden rounded-[1.9rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(6,11,25,0.98))] px-5 py-5 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl"
+    };
+    let status_dot_class = if is_active_now {
+        "h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.95)]"
+    } else {
+        "h-2.5 w-2.5 rounded-full bg-slate-500"
+    };
+    let heart_class = if agent.heartbeat_enabled {
+        "shrink-0 text-rose-400 drop-shadow-[0_0_8px_rgba(251,113,133,0.55)]"
+    } else {
+        "shrink-0 text-slate-600"
+    };
+    let recent_activity_badge = agent
+        .latest_activity_age_ms
+        .map(format_recent_activity_badge)
+        .unwrap_or_else(|| "No activity".to_string());
+    let recent_activity_badge_class = if is_active_now {
+        "inline-flex rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-emerald-200"
+    } else {
+        "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-300"
+    };
+    rsx! {
+        article { class: tile_class,
+            div { class: "pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" }
+            if is_active_now {
+                div { class: "pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-emerald-300/14 blur-3xl" }
+                div { class: "pointer-events-none absolute inset-0 rounded-[1.9rem] ring-1 ring-emerald-300/15" }
+            }
+            div { class: "flex items-start justify-between gap-4 px-1",
+                div { class: "min-w-0",
+                    div { class: "flex items-center gap-2.5",
+                        span { class: status_dot_class }
+                        h3 { class: "m-0 truncate text-base font-semibold tracking-[-0.03em] text-white", "{agent.name}" }
+                    }
+                }
+                div { class: "ml-2 flex shrink-0 items-center gap-2",
+                    if agent.is_default {
+                        span { class: "inline-flex rounded-[999px] border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-cyan-200", "Default" }
+                    }
+                    span { class: recent_activity_badge_class, "{recent_activity_badge}" }
+                }
+            }
+            div { class: "mt-4 rounded-[1.4rem] border border-white/6 bg-white/[0.03] px-4 py-4",
+                div { class: "grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm",
+                    p { class: "m-0 text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-slate-500", "Active sessions" }
+                    p { class: "m-0 text-right font-semibold text-white", "{agent.active_session_count}" }
+                }
+                div { class: "mt-3 flex items-end justify-between gap-3",
+                    if let Some(session_key) = &agent.latest_session_key {
+                        p { class: "m-0 min-w-0 flex-1 truncate pr-2 text-[0.7rem] leading-5 text-slate-500", "Latest session: {session_key}" }
+                    } else {
+                        div { class: "flex-1" }
+                    }
+                    svg {
+                        class: heart_class,
+                        view_box: "0 0 24 24",
+                        width: "16",
+                        height: "16",
+                        fill: "currentColor",
+                        "aria-label": if agent.heartbeat_enabled { "Heartbeat enabled" } else { "Heartbeat disabled" },
+                        path { d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn format_recent_activity_badge(age_ms: u64) -> String {
+    if age_ms < 60_000 {
+        format!("{}s ago", age_ms / 1_000)
+    } else if age_ms < 3_600_000 {
+        format!("{}m ago", age_ms / 60_000)
+    } else if age_ms < 86_400_000 {
+        format!("{}h ago", age_ms / 3_600_000)
+    } else {
+        format!("{}d ago", age_ms / 86_400_000)
+    }
+}
+// SPDX-License-Identifier: Apache-2.0
