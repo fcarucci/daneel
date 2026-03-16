@@ -145,6 +145,10 @@ Commands:
   remap-poc-milestones
   reconcile-poc-doc
   find-task --task <Tn.n>
+  list-prs [--state <open|closed|all>]
+  create-pr --head <branch> --title <title> [--base <branch>] [--body <text>] [--issue <n>] [--draft]
+  update-pr --number <n> [--title <title>] [--body <text>] [--base <branch>] [--state <open|closed>]
+  link-pr-task --pr <n> --issue <n> [--close]
   set-project-status-workflow
   set-issue-status --issues <n,n,...> --status <status>
   repair-t0-numbering
@@ -294,6 +298,21 @@ async function graphql(query, variables = {}) {
 async function allIssues(state = "all") {
   const { owner, repo } = repoParts();
   return rest("GET", `/repos/${owner}/${repo}/issues?state=${state}&per_page=100`);
+}
+
+async function allPulls(state = "open") {
+  const { owner, repo } = repoParts();
+  return rest("GET", `/repos/${owner}/${repo}/pulls?state=${state}&per_page=100`);
+}
+
+async function getIssue(issueNumber) {
+  const { owner, repo } = repoParts();
+  return rest("GET", `/repos/${owner}/${repo}/issues/${issueNumber}`);
+}
+
+async function getPullRequest(pullNumber) {
+  const { owner, repo } = repoParts();
+  return rest("GET", `/repos/${owner}/${repo}/pulls/${pullNumber}`);
 }
 
 async function allMilestones() {
@@ -657,6 +676,199 @@ async function findTask(options) {
         state: issue.state,
         title: issue.title,
       })),
+      null,
+      2,
+    ),
+  );
+}
+
+function issueUrl(issueNumber) {
+  const { owner, repo } = repoParts();
+  return `https://github.com/${owner}/${repo}/issues/${issueNumber}`;
+}
+
+function pullUrl(pullNumber) {
+  const { owner, repo } = repoParts();
+  return `https://github.com/${owner}/${repo}/pull/${pullNumber}`;
+}
+
+function buildPullRequestBody(options, issue) {
+  const sections = [];
+  const taskTag = options.issue
+    ? `Task: #${issue.number} ${issue.title}`
+    : null;
+  if (taskTag) {
+    sections.push(taskTag);
+  }
+  if (options.close && issue) {
+    sections.push(`Closes #${issue.number}`);
+  }
+  if (options.body) {
+    sections.push(options.body);
+  } else {
+    sections.push(
+      [
+        "## Summary",
+        "",
+        "- ",
+        "",
+        "## Verification",
+        "",
+        "- ",
+      ].join("\n"),
+    );
+  }
+
+  return sections.join("\n\n");
+}
+
+async function listPrs(options) {
+  const state = options.state || "open";
+  const pulls = await allPulls(state);
+  console.log(
+    JSON.stringify(
+      pulls.map((pull) => ({
+        number: pull.number,
+        state: pull.state,
+        draft: pull.draft,
+        head: pull.head.ref,
+        base: pull.base.ref,
+        title: pull.title,
+        url: pull.html_url,
+      })),
+      null,
+      2,
+    ),
+  );
+}
+
+async function createPr(options) {
+  const { owner, repo } = repoParts();
+  const head = options.head;
+  const title = options.title;
+  const base = options.base || "main";
+  const issueNumber = options.issue ? Number(options.issue) : null;
+
+  if (!head) {
+    throw new Error("create-pr requires --head <branch>.");
+  }
+  if (!title) {
+    throw new Error("create-pr requires --title <title>.");
+  }
+  if (options.issue && (!Number.isInteger(issueNumber) || issueNumber <= 0)) {
+    throw new Error("create-pr requires a valid --issue <n> when provided.");
+  }
+
+  const issue = issueNumber ? await getIssue(issueNumber) : null;
+  const body = buildPullRequestBody(
+    {
+      body: options.body,
+      issue: issueNumber,
+      close: Boolean(options.close || issueNumber),
+    },
+    issue,
+  );
+
+  const pull = await rest("POST", `/repos/${owner}/${repo}/pulls`, {
+    head,
+    base,
+    title,
+    body,
+    draft: Boolean(options.draft),
+  });
+
+  if (issueNumber) {
+    await rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+      body: `Linked pull request: [#${pull.number}](${pull.html_url})`,
+    });
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        number: pull.number,
+        draft: pull.draft,
+        title: pull.title,
+        head: pull.head.ref,
+        base: pull.base.ref,
+        url: pull.html_url,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function updatePr(options) {
+  const { owner, repo } = repoParts();
+  const number = Number(options.number);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("update-pr requires --number <n>.");
+  }
+
+  const patch = {};
+  if (options.title) patch.title = options.title;
+  if (options.body) patch.body = options.body;
+  if (options.base) patch.base = options.base;
+  if (options.state) patch.state = options.state;
+
+  if (Object.keys(patch).length === 0) {
+    throw new Error("update-pr requires at least one of --title, --body, --base, or --state.");
+  }
+
+  const pull = await rest("PATCH", `/repos/${owner}/${repo}/pulls/${number}`, patch);
+  console.log(
+    JSON.stringify(
+      {
+        number: pull.number,
+        state: pull.state,
+        draft: pull.draft,
+        title: pull.title,
+        head: pull.head.ref,
+        base: pull.base.ref,
+        url: pull.html_url,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function linkPrTask(options) {
+  const { owner, repo } = repoParts();
+  const issueNumber = Number(options.issue);
+  const pullNumber = Number(options.pr);
+  if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+    throw new Error("link-pr-task requires --issue <n>.");
+  }
+  if (!Number.isInteger(pullNumber) || pullNumber <= 0) {
+    throw new Error("link-pr-task requires --pr <n>.");
+  }
+
+  const pull = await getPullRequest(pullNumber);
+  const closingLine = options.close ? `\n\nCloses #${issueNumber}` : "";
+  const nextBody = `${pull.body || ""}${closingLine}`.trim();
+
+  await rest("PATCH", `/repos/${owner}/${repo}/pulls/${pullNumber}`, {
+    body: nextBody,
+  });
+  await rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+    body: `Linked pull request: [#${pullNumber}](${pullUrl(pullNumber)})`,
+  });
+
+  console.log(
+    JSON.stringify(
+      {
+        issue: {
+          number: issueNumber,
+          url: issueUrl(issueNumber),
+        },
+        pullRequest: {
+          number: pullNumber,
+          url: pullUrl(pullNumber),
+        },
+        closesIssue: Boolean(options.close),
+      },
       null,
       2,
     ),
@@ -1090,6 +1302,10 @@ const commands = {
   "remap-poc-milestones": remapPocMilestones,
   "reconcile-poc-doc": reconcilePocDoc,
   "find-task": () => findTask(options),
+  "list-prs": () => listPrs(options),
+  "create-pr": () => createPr(options),
+  "update-pr": () => updatePr(options),
+  "link-pr-task": () => linkPrTask(options),
   "set-project-status-workflow": setProjectStatusWorkflow,
   "set-issue-status": () => setIssueStatus(options),
   "repair-t0-numbering": repairT0Numbering,
