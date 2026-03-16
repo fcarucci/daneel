@@ -4,6 +4,7 @@ mod live;
 mod models;
 mod pages;
 mod router;
+mod utils;
 #[cfg(test)]
 mod test_support;
 
