@@ -47,6 +47,9 @@ pub(crate) struct LoadedGatewayConfig {
     pub(crate) ws_url: String,
 }
 
+const DEFAULT_GATEWAY_URL: &str = "ws://127.0.0.1:18789";
+const ACTIVE_SESSION_WINDOW_MINUTES: u64 = 10;
+
 #[server]
 pub async fn get_gateway_status() -> Result<GatewayStatusSnapshot, ServerFnError> {
     Ok(load_gateway_status().await)
@@ -61,8 +64,8 @@ async fn load_gateway_status() -> GatewayStatusSnapshot {
     let config = match load_gateway_config() {
         Ok(config) => config,
         Err(error) => {
-            return GatewayStatusSnapshot::degraded(
-                "ws://127.0.0.1:18789".to_string(),
+            return degraded_gateway_status(
+                DEFAULT_GATEWAY_URL.to_string(),
                 "Gateway configuration unavailable",
                 error,
             );
@@ -73,17 +76,15 @@ async fn load_gateway_status() -> GatewayStatusSnapshot {
     {
         match fetch_gateway_status_via_websocket(&config).await {
             Ok(snapshot) => snapshot,
-            Err(error) => GatewayStatusSnapshot::degraded(
-                config.ws_url.clone(),
-                "Gateway connection failed",
-                error,
-            ),
+            Err(error) => {
+                degraded_gateway_status(config.ws_url.clone(), "Gateway connection failed", error)
+            }
         }
     }
 
     #[cfg(not(feature = "server"))]
     {
-        GatewayStatusSnapshot::degraded(
+        degraded_gateway_status(
             config.ws_url,
             "Gateway status is only available from the server build",
             "Run Daneel in fullstack mode so server functions can connect to OpenClaw.".to_string(),
@@ -124,6 +125,14 @@ fn default_gateway_port() -> u16 {
     18_789
 }
 
+fn degraded_gateway_status(
+    gateway_url: String,
+    summary: impl Into<String>,
+    detail: impl Into<String>,
+) -> GatewayStatusSnapshot {
+    GatewayStatusSnapshot::degraded(gateway_url, summary, detail)
+}
+
 #[cfg(feature = "server")]
 pub(crate) fn connect_request(request_id: &str, token: &str) -> Value {
     json!({
@@ -149,9 +158,18 @@ pub(crate) fn connect_request(request_id: &str, token: &str) -> Value {
 }
 
 #[cfg(feature = "server")]
-async fn fetch_gateway_status_via_websocket(
+async fn connect_gateway(
     config: &LoadedGatewayConfig,
-) -> Result<GatewayStatusSnapshot, String> {
+    request_id: &str,
+) -> Result<
+    (
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        Envelope,
+    ),
+    String,
+> {
     use futures_util::SinkExt;
     use tokio_tungstenite::{connect_async, tungstenite::Message};
 
@@ -166,32 +184,61 @@ async fn fetch_gateway_status_via_websocket(
 
     socket
         .send(Message::Text(
-            connect_request("connect-1", &config.token)
+            connect_request(request_id, &config.token)
                 .to_string()
                 .into(),
         ))
         .await
         .map_err(|error| format!("Could not send gateway connect request: {error}"))?;
 
-    let connect_frame = wait_for_response(&mut socket, "connect-1").await?;
+    let connect_frame = wait_for_response(&mut socket, request_id).await?;
+    Ok((socket, connect_frame))
+}
+
+#[cfg(feature = "server")]
+async fn request_gateway(
+    socket: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+    request_id: &str,
+    method: &str,
+    params: Value,
+) -> Result<Envelope, String> {
+    use futures_util::SinkExt;
+    use tokio_tungstenite::tungstenite::Message;
 
     socket
         .send(Message::Text(
             json!({
                 "type": "req",
-                "id": "health-1",
-                "method": "health",
-                "params": {}
+                "id": request_id,
+                "method": method,
+                "params": params,
             })
             .to_string()
             .into(),
         ))
         .await
-        .map_err(|error| format!("Could not send gateway health request: {error}"))?;
+        .map_err(|error| format!("Could not send gateway {method} request: {error}"))?;
 
-    let health_frame = wait_for_response(&mut socket, "health-1").await?;
-    let _ = socket.close(None).await;
+    wait_for_response(socket, request_id).await
+}
 
+#[cfg(feature = "server")]
+fn map_gateway_level(label: &str) -> GatewayLevel {
+    if label.eq_ignore_ascii_case("healthy") {
+        GatewayLevel::Healthy
+    } else {
+        GatewayLevel::Degraded
+    }
+}
+
+#[cfg(feature = "server")]
+fn map_gateway_status_snapshot(
+    config: &LoadedGatewayConfig,
+    connect_frame: &Envelope,
+    health_frame: &Envelope,
+) -> GatewayStatusSnapshot {
     let protocol_version = connect_frame
         .payload
         .as_ref()
@@ -225,15 +272,10 @@ async fn fetch_gateway_status_via_websocket(
         .as_ref()
         .and_then(|payload| find_string(payload, &["status", "health", "state"]))
         .unwrap_or_else(|| "healthy".to_string());
-    let level = if health_label.eq_ignore_ascii_case("healthy") {
-        GatewayLevel::Healthy
-    } else {
-        GatewayLevel::Degraded
-    };
 
-    Ok(GatewayStatusSnapshot {
+    GatewayStatusSnapshot {
         connected: true,
-        level,
+        level: map_gateway_level(&health_label),
         summary: format!("Connected to the OpenClaw Gateway over WebSocket ({health_label})."),
         detail: format!(
             "Gateway status was fetched through the documented loopback WS connection at {}.",
@@ -243,7 +285,21 @@ async fn fetch_gateway_status_via_websocket(
         protocol_version,
         state_version,
         uptime_ms,
-    })
+    }
+}
+
+#[cfg(feature = "server")]
+async fn fetch_gateway_status_via_websocket(
+    config: &LoadedGatewayConfig,
+) -> Result<GatewayStatusSnapshot, String> {
+    let (mut socket, connect_frame) = connect_gateway(config, "connect-1").await?;
+    let health_frame = request_gateway(&mut socket, "health-1", "health", json!({})).await?;
+    let _ = socket.close(None).await;
+    Ok(map_gateway_status_snapshot(
+        config,
+        &connect_frame,
+        &health_frame,
+    ))
 }
 
 #[cfg(feature = "server")]
@@ -261,28 +317,7 @@ async fn load_agent_overview() -> Result<AgentOverviewSnapshot, String> {
 async fn fetch_agent_overview_via_websocket(
     config: &LoadedGatewayConfig,
 ) -> Result<AgentOverviewSnapshot, String> {
-    use futures_util::SinkExt;
-    use tokio_tungstenite::{connect_async, tungstenite::Message};
-
-    let (mut socket, _) = connect_async(config.ws_url.as_str())
-        .await
-        .map_err(|error| {
-            format!(
-                "Could not open gateway websocket {}: {error}",
-                config.ws_url
-            )
-        })?;
-
-    socket
-        .send(Message::Text(
-            connect_request("connect-agents-1", &config.token)
-                .to_string()
-                .into(),
-        ))
-        .await
-        .map_err(|error| format!("Could not send gateway connect request: {error}"))?;
-
-    let connect_frame = wait_for_response(&mut socket, "connect-agents-1").await?;
+    let (mut socket, connect_frame) = connect_gateway(config, "connect-agents-1").await?;
     let _ = socket.close(None).await;
 
     let payload = connect_frame
@@ -434,17 +469,135 @@ fn find_u64(value: &Value, candidates: &[&str]) -> Option<u64> {
     }
 }
 
+fn require_object<'a>(
+    value: &'a Value,
+    key: &str,
+    context: &str,
+) -> Result<&'a serde_json::Map<String, Value>, String> {
+    value
+        .get(key)
+        .and_then(Value::as_object)
+        .ok_or_else(|| format!("{context} did not include {key}."))
+}
+
+fn require_array<'a>(
+    value: &'a serde_json::Map<String, Value>,
+    key: &str,
+    context: &str,
+) -> Result<&'a [Value], String> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|values| values.as_slice())
+        .ok_or_else(|| format!("{context} did not include {key}."))
+}
+
+fn map_agent_identity(agent: &Value) -> Result<(String, String, bool), String> {
+    let id = agent
+        .get("agentId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Gateway agent snapshot is missing agentId.".to_string())?
+        .to_string();
+    let name = agent
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or(&id)
+        .to_string();
+    let is_default = agent
+        .get("isDefault")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    Ok((id, name, is_default))
+}
+
+fn map_heartbeat(agent: &Value) -> (bool, String, Option<String>) {
+    let heartbeat = agent.get("heartbeat").unwrap_or(&Value::Null);
+    let heartbeat_enabled = heartbeat
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let heartbeat_schedule = if heartbeat_enabled {
+        heartbeat
+            .get("every")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| "Scheduled".to_string())
+    } else {
+        "Disabled".to_string()
+    };
+    let heartbeat_model = heartbeat
+        .get("model")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+
+    (heartbeat_enabled, heartbeat_schedule, heartbeat_model)
+}
+
+fn map_session_recency(
+    agent: &Value,
+    snapshot_timestamp_ms: u64,
+) -> Result<(u64, Option<String>, Option<u64>), String> {
+    let sessions = agent.get("sessions").unwrap_or(&Value::Null);
+    let session_store_path = sessions.get("path").and_then(Value::as_str);
+    let active_session_count = session_store_path
+        .map(|path| {
+            count_active_sessions(
+                Path::new(path),
+                snapshot_timestamp_ms,
+                ACTIVE_SESSION_WINDOW_MINUTES,
+            )
+        })
+        .transpose()?
+        .unwrap_or(0);
+
+    let recent = sessions
+        .get("recent")
+        .and_then(Value::as_array)
+        .and_then(|entries| entries.first());
+    let latest_session_key = recent
+        .and_then(|entry| entry.get("key"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    let latest_activity_age_ms = recent
+        .and_then(|entry| entry.get("age"))
+        .and_then(Value::as_u64);
+
+    Ok((
+        active_session_count,
+        latest_session_key,
+        latest_activity_age_ms,
+    ))
+}
+
+fn map_agent_overview_item(
+    agent: &Value,
+    snapshot_timestamp_ms: u64,
+) -> Result<AgentOverviewItem, String> {
+    let (id, name, is_default) = map_agent_identity(agent)?;
+    let (heartbeat_enabled, heartbeat_schedule, heartbeat_model) = map_heartbeat(agent);
+    let (active_session_count, latest_session_key, latest_activity_age_ms) =
+        map_session_recency(agent, snapshot_timestamp_ms)?;
+
+    Ok(AgentOverviewItem {
+        id,
+        name,
+        is_default,
+        heartbeat_enabled,
+        heartbeat_schedule,
+        heartbeat_model,
+        active_session_count,
+        latest_session_key,
+        latest_activity_age_ms,
+    })
+}
+
 fn map_agent_overview_snapshot(payload: &Value) -> Result<AgentOverviewSnapshot, String> {
     let snapshot = payload
         .get("snapshot")
         .ok_or_else(|| "Gateway connect payload did not include a snapshot.".to_string())?;
-    let health = snapshot
-        .get("health")
-        .ok_or_else(|| "Gateway snapshot did not include health data.".to_string())?;
-    let agents = health
-        .get("agents")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "Gateway health snapshot did not include an agents list.".to_string())?;
+    let health = require_object(snapshot, "health", "Gateway snapshot")?;
+    let agents = require_array(health, "agents", "Gateway health snapshot")?;
 
     let default_agent_id = health
         .get("defaultAgentId")
@@ -459,72 +612,9 @@ fn map_agent_overview_snapshot(payload: &Value) -> Result<AgentOverviewSnapshot,
     let mut items = Vec::with_capacity(agents.len());
 
     for agent in agents {
-        let id = agent
-            .get("agentId")
-            .and_then(Value::as_str)
-            .ok_or_else(|| "Gateway agent snapshot is missing agentId.".to_string())?
-            .to_string();
-
-        let name = agent
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or(&id)
-            .to_string();
-        let is_default = agent
-            .get("isDefault")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-
-        let heartbeat = agent.get("heartbeat").unwrap_or(&Value::Null);
-        let heartbeat_enabled = heartbeat
-            .get("enabled")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let heartbeat_schedule = if heartbeat_enabled {
-            heartbeat
-                .get("every")
-                .and_then(Value::as_str)
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| "Scheduled".to_string())
-        } else {
-            "Disabled".to_string()
-        };
-        let heartbeat_model = heartbeat
-            .get("model")
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned);
-
-        let sessions = agent.get("sessions").unwrap_or(&Value::Null);
-        let session_store_path = sessions.get("path").and_then(Value::as_str);
-        let active_session_count = session_store_path
-            .map(|path| count_active_sessions(Path::new(path), snapshot_timestamp_ms, 10))
-            .transpose()?
-            .unwrap_or(0);
-        total_active_sessions += active_session_count;
-
-        let recent = sessions
-            .get("recent")
-            .and_then(Value::as_array)
-            .and_then(|recent| recent.first());
-        let latest_session_key = recent
-            .and_then(|entry| entry.get("key"))
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned);
-        let latest_activity_age_ms = recent
-            .and_then(|entry| entry.get("age"))
-            .and_then(Value::as_u64);
-
-        items.push(AgentOverviewItem {
-            id,
-            name,
-            is_default,
-            heartbeat_enabled,
-            heartbeat_schedule,
-            heartbeat_model,
-            active_session_count,
-            latest_session_key,
-            latest_activity_age_ms,
-        });
+        let item = map_agent_overview_item(agent, snapshot_timestamp_ms)?;
+        total_active_sessions += item.active_session_count;
+        items.push(item);
     }
 
     let active_recent_agents = items
