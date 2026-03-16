@@ -222,6 +222,38 @@ The browser application should be structured around:
 - shared UI state provided via Dioxus context for layout, theme, and navigation concerns
 - a theme layer that resolves semantic UI tokens into the active bright or dark theme values
 
+## 5.1 Live Agent Tile Semantics
+
+The agents view should distinguish between:
+
+- server-derived runtime facts
+- client-derived display time
+
+Server-derived runtime facts:
+
+- last observed activity timestamp
+- active session counts
+- heartbeat configuration or schedule presence
+
+Client-derived display time:
+
+- `time ago` ribbon text such as `4m ago` or `2h ago`
+- active or inactive presentation as tiles cross the recent-activity threshold while the page remains open
+
+Rules:
+
+- the displayed recency must continue updating on the client after first render
+- the active-state glow must update when the recency ages beyond the recent-activity threshold
+- the recent-activity threshold should stay aligned with the current agents-page operator rule
+- heartbeat presentation must reflect heartbeat configuration truthfully
+- missing heartbeat schedule, `none`, or zero cadence must be treated as heartbeat disabled and render a gray heart
+
+Testing guidance:
+
+- unit tests should isolate recency formatting and active-threshold transitions from wall-clock time by injecting a controllable reference timestamp
+- integration tests should verify that the live agents page updates recency text and active-state styling without a full page reload
+- integration tests should verify that disabled-heartbeat agent data renders a gray heartbeat icon consistently
+
 Theme separation guidance:
 
 - keep theme definitions in dedicated theme modules or theme data files

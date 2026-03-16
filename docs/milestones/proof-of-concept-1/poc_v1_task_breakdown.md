@@ -398,6 +398,37 @@ Tests:
 
 ---
 
+## T2.7 Make agent recency and heartbeat state update live
+
+Purpose:
+
+- keep the agents view truthful after the initial live event bridge is in place
+
+Output:
+
+- agent tile `time ago` ribbons that continue advancing on the client without requiring a full page refresh
+- active tile styling that updates as agents cross the recent-activity threshold
+- heartbeat indicator logic that treats disabled, missing, `none`, or zero heartbeat cadence as inactive and gray
+- unit and integration coverage for the recency ticker and heartbeat normalization rules
+
+Delivery rules:
+
+- derive displayed recency from the last-known event timestamp plus client-side elapsed time
+- keep the active-state threshold consistent with the current 10-minute recent-activity window
+- do not show a live heartbeat heart when the gateway data indicates no heartbeat schedule
+- preserve deterministic behavior in tests by controlling the clock or recency formatter input
+
+Tests:
+
+- unit test: recency formatter advances from minutes to hours correctly as time passes
+- unit test: crossing the recent-activity threshold flips an agent from active to inactive styling
+- unit test: heartbeat values of missing, `none`, or zero produce the gray heart state
+- integration test: the agents view updates `time ago` ribbons live without a page reload
+- integration test: an agent tile loses active glow when it ages out of the recent-activity window
+- integration test: planner-style disabled heartbeat data renders a gray heart consistently
+
+---
+
 # Phase 3: OpenClaw Adapter Minimum Slice
 
 ## T3.1 Create the adapter trait and OpenClaw adapter module
@@ -828,29 +859,30 @@ Tests:
 9. T2.3
 10. T2.5
 11. T2.6
-12. T3.1
-13. T3.2
-14. T3.3
-15. T3.4
-16. T3.5
-17. T3.6
-18. T3.7
-19. T4.1
-20. T4.2
-21. T4.3
-22. T1.2
-23. T1.3
-24. T5.1
-25. T5.2
-26. T5.3
-27. T5.4
-28. T5.5
-29. T6.1
-30. T6.2
-31. T6.3
-32. T7.1
-33. T7.2
-34. T7.3
+12. T2.7
+13. T3.1
+14. T3.2
+15. T3.3
+16. T3.4
+17. T3.5
+18. T3.6
+19. T3.7
+20. T4.1
+21. T4.2
+22. T4.3
+23. T1.2
+24. T1.3
+25. T5.1
+26. T5.2
+27. T5.3
+28. T5.4
+29. T5.5
+30. T6.1
+31. T6.2
+32. T6.3
+33. T7.1
+34. T7.2
+35. T7.3
 
 ## Smallest Useful Vertical Slice
 
@@ -866,20 +898,21 @@ If we want the absolute minimum path before the full polish pass:
 8. T2.2
 9. T2.5
 10. T2.6
-11. T3.1
-12. T3.2
-13. T3.3
-14. T3.4
-15. T3.5
-16. T3.6
-17. T4.1
-18. T4.3
-19. T5.1
-20. T5.2
-21. T5.3
-22. T5.4
-23. T6.2
-24. T7.3
+11. T2.7
+12. T3.1
+13. T3.2
+14. T3.3
+15. T3.4
+16. T3.5
+17. T3.6
+18. T4.1
+19. T4.3
+20. T5.1
+21. T5.2
+22. T5.3
+23. T5.4
+24. T6.2
+25. T7.3
 
 ## POC Success Demo Script
 
