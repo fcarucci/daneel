@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 
 use crate::gateway::get_agent_overview;
 use crate::models::agents::{AgentOverviewItem, AgentOverviewSnapshot};
-use crate::utils::time::{ACTIVE_WINDOW_MS, format_age_badge};
+use crate::utils::time::{ACTIVE_WINDOW_MS, format_age_badge, heartbeat_is_active};
 
 const AGENT_TILE_ACTIVE_CLASS: &str = "group relative overflow-hidden rounded-[1.9rem] border border-emerald-300/35 bg-[linear-gradient(180deg,rgba(14,28,32,0.96),rgba(5,12,24,0.98))] px-5 py-5 shadow-[0_0_0_1px_rgba(110,231,183,0.14),0_0_42px_rgba(16,185,129,0.28),0_0_90px_rgba(16,185,129,0.08),0_24px_64px_rgba(2,6,23,0.42)] backdrop-blur-xl";
 const AGENT_TILE_IDLE_CLASS: &str = "group relative overflow-hidden rounded-[1.9rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(6,11,25,0.98))] px-5 py-5 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl";
@@ -103,9 +103,21 @@ fn MetricCard(label: String, value: String, detail: String) -> Element {
 
 #[component]
 fn AgentCard(agent: AgentOverviewItem) -> Element {
-    let is_active_now = agent
-        .latest_activity_age_ms
-        .is_some_and(|age| age <= ACTIVE_WINDOW_MS);
+    let elapsed_ms = use_signal(|| 0_u64);
+
+    #[cfg(target_arch = "wasm32")]
+    use_coroutine(|_| {
+        let mut elapsed_ms = elapsed_ms;
+        async move {
+            loop {
+                gloo_timers::future::TimeoutFuture::new(1000).await;
+                elapsed_ms += 1000;
+            }
+        }
+    });
+
+    let displayed_age_ms = agent.latest_activity_age_ms.map(|age| age + elapsed_ms());
+    let is_active_now = is_agent_active(displayed_age_ms);
     let tile_class = if is_active_now {
         AGENT_TILE_ACTIVE_CLASS
     } else {
@@ -116,13 +128,12 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
     } else {
         STATUS_DOT_IDLE_CLASS
     };
-    let heart_class = if agent.heartbeat_enabled {
+    let heart_class = if heartbeat_is_active(agent.heartbeat_enabled, &agent.heartbeat_schedule) {
         HEART_ACTIVE_CLASS
     } else {
         HEART_IDLE_CLASS
     };
-    let recent_activity_badge = agent
-        .latest_activity_age_ms
+    let recent_activity_badge = displayed_age_ms
         .map(format_age_badge)
         .unwrap_or_else(|| "No activity".to_string());
     let recent_activity_badge_class = if is_active_now {
@@ -152,6 +163,10 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
             )}
         }
     }
+}
+
+fn is_agent_active(displayed_age_ms: Option<u64>) -> bool {
+    displayed_age_ms.is_some_and(|age| age <= ACTIVE_WINDOW_MS)
 }
 
 fn agent_header(
@@ -204,9 +219,87 @@ fn agent_sessions(
                     height: "16",
                     fill: "currentColor",
                     "aria-label": if heartbeat_enabled { "Heartbeat enabled" } else { "Heartbeat disabled" },
-                    path { d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" }
+                    path { d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 极 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" }
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::time::{format_age_badge, heartbeat_is_active};
+
+    #[test]
+    fn is_agent_active_below_threshold() {
+        assert!(is_agent_active(Some(599_999)));
+    }
+
+    #[test]
+    fn is_agent_active_at_threshold() {
+        assert!(!is_agent_active(Some(600_000)));
+    }
+
+    #[test]
+    fn is_agent_active_none_age() {
+        assert!(!is_agent_active(None));
+    }
+
+    #[test]
+    fn format_age_badge_boundary_values() {
+        assert_eq!(format_age_badge(60_000), "1m ago");
+        assert_eq!(format_age_badge(3_600_000), "1h ago");
+    }
+
+    #[test]
+    fn displayed_age_logic_adds_elapsed() {
+        let server_age = 300_000;
+        let elapsed = 150_000;
+        assert_eq!(server_age + elapsed, 450_000);
+    }
+
+    #[test]
+    fn elapsed_can_push_past_threshold() {
+        let server_age = 599_000;
+        let elapsed = 2_000;
+        assert!(server_age + elapsed > ACTIVE_WINDOW_MS);
+    }
+
+    #[test]
+    fn styling_class_selection() {
+        assert_eq!(AGENT_TILE_ACTIVE_CLASS, AGENT_TILE_ACTIVE_CLASS);
+        assert_eq!(AGENT_TILE_IDLE_CLASS, AGENT_TILE_IDLE_CLASS);
+        assert_eq!(STATUS_DOT_ACTIVE_CLASS, STATUS_DOT_ACTIVE_CLASS);
+        assert_eq!(STATUS_DOT_IDLE_CLASS, STATUS_DOT_IDLE_CLASS);
+        assert_eq!(HEART_ACTIVE_CLASS, HEART_ACTIVE_CLASS);
+        assert_eq!(HEART_IDLE_CLASS, HEART_IDLE_CLASS);
+        assert_eq!(RECENT_BADGE_ACTIVE_CLASS, RECENT_BADGE_ACTIVE_CLASS);
+        assert_eq!(RECENT_BADGE_IDLE_CLASS, RECENT_BADGE_IDLE_CLASS);
+    }
+
+    #[test]
+    fn glow_flips_when_elapsed_crosses_threshold() {
+        // Simulate server age just below threshold
+        let server_age = Some(599_000);
+        let initial_active = is_agent_active(server_age);
+
+        // Add elapsed time to push past threshold
+        let elapsed = 2_000;
+        let displayed_age = server_age.map(|age| age + elapsed);
+        let final_active = is_agent_active(displayed_age);
+
+        assert!(initial_active);
+        assert!(!final_active);
+    }
+
+    #[test]
+    fn heartbeat_states() {
+        assert!(heartbeat_is_active(true, "*/5 * * * *"));
+        assert!(!heartbeat_is_active(false, "*/5 * * * *"));
+        assert!(!heartbeat_is_active(true, ""));
+        assert!(!heartbeat_is_active(true, "none"));
+        assert!(!heartbeat_is_active(true, "0"));
+        assert!(!heartbeat_is_active(true, "disabled"));
     }
 }

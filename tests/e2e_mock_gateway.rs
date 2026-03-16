@@ -85,3 +85,50 @@ fn degraded_gateway_dashboard_renders_error_state() {
     );
     assert!(dashboard_response.contains("/assets/main-"));
 }
+
+#[test]
+#[serial]
+fn agents_view_renders_time_ago_ribbons() {
+    let mut app = lock_app(healthy_app(), "healthy");
+
+    let agents_response = app.wait_for_page_response(
+        "/agents",
+        &["HTTP/1.1 200 OK", "Graph View", "Agent tiles"],
+        &["Internal Server Error"],
+    );
+    assert!(agents_response.contains("120s ago"));
+    assert!(agents_response.contains("5m ago"));
+    assert!(agents_response.contains("2h 20m ago"));
+}
+
+#[test]
+#[serial]
+fn inactive_agent_tile_has_no_active_glow() {
+    let mut app = lock_app(healthy_app(), "healthy");
+
+    let agents_response = app.wait_for_page_response(
+        "/agents",
+        &["HTTP/1.1 200 OK", "Graph View", "Agent tiles"],
+        &["Internal Server Error"],
+    );
+    // Planner agent should be inactive (8.4M ms old)
+    assert!(agents_response.contains("planner"));
+    assert!(!agents_response.contains("border-emerald-300/35")); // Active border class
+    assert!(agents_response.contains("border-white/10")); // Inactive border class
+}
+
+#[test]
+#[serial]
+fn disabled_heartbeat_agent_renders_gray_heart() {
+    let mut app = lock_app(healthy_app(), "healthy");
+
+    let agents_response = app.wait_for_page_response(
+        "/agents",
+        &["HTTP/1.1 200 OK", "Graph View", "Agent tiles"],
+        &["Internal Server Error"],
+    );
+    // Planner agent should have gray heart (disabled heartbeat)
+    assert!(agents_response.contains("planner"));
+    assert!(!agents_response.contains("text-rose-400")); // Active heart class
+    assert!(agents_response.contains("text-slate-600")); // Inactive heart class
+}
