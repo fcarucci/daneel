@@ -16,16 +16,31 @@ static HEALTHY_APP: OnceLock<Mutex<BrowserTestApp>> = OnceLock::new();
 static DEGRADED_APP: OnceLock<Mutex<BrowserTestApp>> = OnceLock::new();
 
 pub fn healthy_app() -> &'static Mutex<BrowserTestApp> {
-    HEALTHY_APP.get_or_init(|| {
-        prepare_browser_test_environment();
-        Mutex::new(BrowserTestApp::healthy().expect("start healthy browser test app"))
-    })
+    init_browser_test_app(
+        &HEALTHY_APP,
+        BrowserTestApp::healthy,
+        "start healthy browser test app",
+    )
 }
 
 pub fn degraded_app() -> &'static Mutex<BrowserTestApp> {
-    DEGRADED_APP.get_or_init(|| {
+    init_browser_test_app(
+        &DEGRADED_APP,
+        BrowserTestApp::degraded,
+        "start degraded browser test app",
+    )
+}
+
+fn init_browser_test_app(
+    slot: &'static OnceLock<Mutex<BrowserTestApp>>,
+    builder: fn() -> Result<BrowserTestApp, String>,
+    context: &str,
+) -> &'static Mutex<BrowserTestApp> {
+    slot.get_or_init(|| {
         prepare_browser_test_environment();
-        Mutex::new(BrowserTestApp::degraded().expect("start degraded browser test app"))
+        Mutex::new(builder().unwrap_or_else(|error| {
+            panic!("{context} failed: {error}");
+        }))
     })
 }
 
