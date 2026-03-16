@@ -133,30 +133,29 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
                 div { class: "pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-emerald-300/14 blur-3xl" }
                 div { class: "pointer-events-none absolute inset-0 rounded-[1.9rem] ring-1 ring-emerald-300/15" }
             }
-            AgentHeader {
-                name: agent.name.clone(),
+            {agent_header(
+                agent.name.as_str(),
                 status_dot_class,
-                is_default: agent.is_default,
+                agent.is_default,
                 recent_activity_badge_class,
-                recent_activity_badge: recent_activity_badge.clone(),
-            }
-            AgentSessions {
-                active_session_count: agent.active_session_count,
-                latest_session_key: agent.latest_session_key.clone(),
+                recent_activity_badge.as_str(),
+            )}
+            {agent_sessions(
+                agent.active_session_count,
+                agent.latest_session_key.as_deref(),
                 heart_class,
-                heartbeat_enabled: agent.heartbeat_enabled,
-            }
+                agent.heartbeat_enabled,
+            )}
         }
     }
 }
 
-#[component]
-fn AgentHeader(
-    name: String,
+fn agent_header(
+    name: &str,
     status_dot_class: &'static str,
     is_default: bool,
     recent_activity_badge_class: &'static str,
-    recent_activity_badge: String,
+    recent_activity_badge: &str,
 ) -> Element {
     rsx! {
         div { class: "flex items-start justify-between gap-4 px-1",
@@ -176,10 +175,9 @@ fn AgentHeader(
     }
 }
 
-#[component]
-fn AgentSessions(
+fn agent_sessions(
     active_session_count: u64,
-    latest_session_key: Option<String>,
+    latest_session_key: Option<&str>,
     heart_class: &'static str,
     heartbeat_enabled: bool,
 ) -> Element {
