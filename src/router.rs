@@ -1,31 +1,29 @@
 use dioxus::prelude::*;
 
 use crate::components::layout::AppLayout;
-use crate::pages::{
-    agents::AgentsPage, dashboard::DashboardPage, not_found::NotFoundPage, settings::SettingsPage,
-};
+use crate::pages::{agents::Agents, dashboard::Dashboard, not_found::NotFound, settings::Settings};
 
 #[derive(Clone, Debug, PartialEq, Eq, Routable)]
 pub enum Route {
     #[layout(AppLayout)]
     #[route("/")]
-    DashboardPage {},
+    Dashboard {},
     #[route("/agents")]
-    AgentsPage {},
+    Agents {},
     #[route("/settings")]
-    SettingsPage {},
+    Settings {},
     #[end_layout]
     #[route("/:..segments")]
-    NotFoundPage { segments: Vec<String> },
+    NotFound { segments: Vec<String> },
 }
 
 impl Route {
     pub const fn label(&self) -> &'static str {
         match self {
-            Self::DashboardPage { .. } => "Dashboard",
-            Self::AgentsPage { .. } => "Agents",
-            Self::SettingsPage { .. } => "Settings",
-            Self::NotFoundPage { .. } => "Not Found",
+            Self::Dashboard { .. } => "Dashboard",
+            Self::Agents { .. } => "Agents",
+            Self::Settings { .. } => "Settings",
+            Self::NotFound { .. } => "Not Found",
         }
     }
 }

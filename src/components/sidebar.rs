@@ -2,11 +2,7 @@ use dioxus::prelude::*;
 
 use crate::router::Route;
 
-const NAV_ITEMS: [Route; 3] = [
-    Route::DashboardPage {},
-    Route::AgentsPage {},
-    Route::SettingsPage {},
-];
+const NAV_ITEMS: [Route; 3] = [Route::Dashboard {}, Route::Agents {}, Route::Settings {}];
 
 #[component]
 pub fn Sidebar() -> Element {
@@ -52,7 +48,7 @@ pub fn Sidebar() -> Element {
 #[component]
 fn NavIcon(route: Route, class: &'static str) -> Element {
     match route {
-        Route::DashboardPage {} => rsx! {
+        Route::Dashboard {} => rsx! {
             svg {
                 class,
                 view_box: "0 0 24 24",
@@ -68,7 +64,7 @@ fn NavIcon(route: Route, class: &'static str) -> Element {
                 rect { x: "3", y: "13", width: "7", height: "8", rx: "1.5" }
             }
         },
-        Route::AgentsPage {} => rsx! {
+        Route::Agents {} => rsx! {
             svg {
                 class,
                 view_box: "0 0 24 24",
@@ -84,7 +80,7 @@ fn NavIcon(route: Route, class: &'static str) -> Element {
                 path { d: "M15.5 17c.5-1.6 1.8-2.7 3.5-2.7 1.1 0 2 .4 2.5 1.2" }
             }
         },
-        Route::SettingsPage {} => rsx! {
+        Route::Settings {} => rsx! {
             svg {
                 class,
                 view_box: "0 0 24 24",

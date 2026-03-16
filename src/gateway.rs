@@ -42,9 +42,9 @@ struct OpenClawAuth {
 }
 
 #[derive(Debug)]
-struct LoadedGatewayConfig {
-    token: String,
-    ws_url: String,
+pub(crate) struct LoadedGatewayConfig {
+    pub(crate) token: String,
+    pub(crate) ws_url: String,
 }
 
 #[server]
@@ -91,7 +91,7 @@ async fn load_gateway_status() -> GatewayStatusSnapshot {
     }
 }
 
-fn load_gateway_config() -> Result<LoadedGatewayConfig, String> {
+pub(crate) fn load_gateway_config() -> Result<LoadedGatewayConfig, String> {
     let path = openclaw_config_path()?;
     let raw = fs::read_to_string(&path)
         .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
@@ -125,7 +125,7 @@ fn default_gateway_port() -> u16 {
 }
 
 #[cfg(feature = "server")]
-fn connect_request(request_id: &str, token: &str) -> Value {
+pub(crate) fn connect_request(request_id: &str, token: &str) -> Value {
     json!({
         "type": "req",
         "id": request_id,
@@ -136,11 +136,10 @@ fn connect_request(request_id: &str, token: &str) -> Value {
             "role": "operator",
             "scopes": ["operator.read"],
             "client": {
-                "id": "cli",
+                "id": "gateway-client",
                 "version": env!("CARGO_PKG_VERSION"),
-                "displayName": "Daneel",
-                "platform": "web",
-                "mode": "probe"
+                "platform": std::env::consts::OS,
+                "mode": "backend"
             },
             "auth": {
                 "token": token
@@ -226,10 +225,15 @@ async fn fetch_gateway_status_via_websocket(
         .as_ref()
         .and_then(|payload| find_string(payload, &["status", "health", "state"]))
         .unwrap_or_else(|| "healthy".to_string());
+    let level = if health_label.eq_ignore_ascii_case("healthy") {
+        GatewayLevel::Healthy
+    } else {
+        GatewayLevel::Degraded
+    };
 
     Ok(GatewayStatusSnapshot {
         connected: true,
-        level: GatewayLevel::Healthy,
+        level,
         summary: format!("Connected to the OpenClaw Gateway over WebSocket ({health_label})."),
         detail: format!(
             "Gateway status was fetched through the documented loopback WS connection at {}.",
@@ -289,7 +293,7 @@ async fn fetch_agent_overview_via_websocket(
 }
 
 #[cfg(feature = "server")]
-async fn wait_for_response<
+pub(crate) async fn wait_for_response<
     S: futures_util::Stream<
             Item = Result<
                 tokio_tungstenite::tungstenite::Message,
@@ -337,8 +341,37 @@ async fn wait_for_response<
     }
 }
 
+#[cfg(all(test, feature = "server"))]
+mod tests {
+    use super::{
+        GatewayLevel, connect_request, fetch_gateway_status_via_websocket, load_gateway_config,
+    };
+
+    #[test]
+    fn connect_request_uses_backend_gateway_identity() {
+        let request = connect_request("connect-test-1", "test-token");
+
+        assert_eq!(request["method"], "connect");
+        assert_eq!(request["params"]["client"]["id"], "gateway-client");
+        assert_eq!(request["params"]["client"]["mode"], "backend");
+        assert_eq!(request["params"]["auth"]["token"], "test-token");
+    }
+
+    #[tokio::test]
+    #[ignore = "manual live verification against the developer's local OpenClaw gateway"]
+    async fn live_gateway_status_fetch_reports_healthy() {
+        let config = load_gateway_config().expect("load local OpenClaw gateway config");
+        let snapshot = fetch_gateway_status_via_websocket(&config)
+            .await
+            .expect("fetch gateway status over websocket");
+
+        assert!(snapshot.connected);
+        assert!(matches!(snapshot.level, GatewayLevel::Healthy));
+    }
+}
+
 #[derive(Debug, Deserialize)]
-struct Envelope {
+pub(crate) struct Envelope {
     #[serde(rename = "type")]
     kind: String,
     #[serde(default)]
@@ -379,10 +412,10 @@ fn find_u64(value: &Value, candidates: &[&str]) -> Option<u64> {
     match value {
         Value::Object(map) => {
             for candidate in candidates {
-                if let Some(Value::Number(found)) = map.get(*candidate) {
-                    if let Some(parsed) = found.as_u64() {
-                        return Some(parsed);
-                    }
+                if let Some(Value::Number(found)) = map.get(*candidate)
+                    && let Some(parsed) = found.as_u64()
+                {
+                    return Some(parsed);
                 }
             }
 

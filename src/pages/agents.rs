@@ -4,7 +4,7 @@ use crate::gateway::get_agent_overview;
 use crate::models::agents::{AgentOverviewItem, AgentOverviewSnapshot};
 
 #[component]
-pub fn AgentsPage() -> Element {
+pub fn Agents() -> Element {
     let agent_overview = use_resource(|| async move { get_agent_overview().await });
 
     rsx! {

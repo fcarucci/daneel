@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 #[component]
-pub fn SettingsPage() -> Element {
+pub fn Settings() -> Element {
     rsx! {
         section { class: "flex flex-col gap-5",
             div { class: "flex flex-col gap-2",

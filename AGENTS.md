@@ -235,17 +235,17 @@ cargo check --features server
 cargo test
 ```
 
-### Browser integration test
+### Mock-gateway integration test
 
-The repo now includes a browser-driven integration test that runs through `cargo test`.
+The repo now includes an end-to-end integration test that runs through `cargo test`.
 
 It:
 
 - starts a mock OpenClaw-style WebSocket gateway
 - writes a temporary OpenClaw config for Daneel
 - launches the real Dioxus fullstack app
-- opens the app in headless Chrome
-- verifies healthy and degraded UI states from the rendered browser DOM
+- verifies route DOM/HTML over HTTP
+- verifies the live gateway bridge through the SSE endpoint
 
 Use:
 
@@ -257,7 +257,8 @@ Notes:
 
 - this is the preferred `T1.5` end-to-end browser test entrypoint
 - it does not depend on the developer's personal OpenClaw data
-- it requires `dx`, `npm`, and `google-chrome` on `PATH`
+- it requires `dx` and `npm` on `PATH`
+- keep screenshot capture out of this automated test path; the mock-gateway suite should stay deterministic and fail fast
 
 ### Runtime smoke test
 
@@ -276,6 +277,31 @@ curl -I http://127.0.0.1:4127/wasm/daneel.js
 ```
 
 ### Headless browser verification
+
+Prefer the repo verifier over raw `google-chrome --dump-dom` when you need a trustworthy answer about hydration.
+
+Use the verifier in `scripts/verify-route.mjs` because it:
+
+- waits for the page to finish hydrating
+- waits for the hashed `/assets/main-*.css` stylesheet to be present
+- waits for the page background styling to be applied
+- lets you declare required text and forbidden text
+- writes both a screenshot and the final hydrated DOM
+
+Example for the agents route:
+
+```bash
+node scripts/verify-route.mjs \
+  --url http://127.0.0.1:4127/agents \
+  --screenshot /tmp/daneel-agents-live.png \
+  --dom /tmp/daneel-agents-live.html \
+  --wait-text "Agent tiles" \
+  --wait-text "email" \
+  --forbid-text "Loading agents" \
+  --forbid-text "Gateway lookup failed"
+```
+
+Use raw `--dump-dom` only as a quick secondary signal.
 
 To confirm the page hydrates and renders actual app DOM:
 
@@ -298,6 +324,13 @@ Expected signals of success:
 - the hydrated DOM includes a hashed stylesheet under `/assets/main-*.css`
 - the served stylesheet begins with the Tailwind banner for `tailwindcss v4`
 - the dashboard gateway card renders a real status result from the Dioxus server function
+
+Important lessons:
+
+- `curl` and raw SSR HTML do not prove hydration; they can still show `Loading agents` or `Connecting`
+- a screenshot taken too early can be misleading even when the app is fine
+- if the verifier times out, inspect the saved DOM and the dev-server logs before trusting the screenshot result
+- if the live route never leaves a loading state, verify that `/wasm/daneel.js` is serving correctly before blaming the UI
 
 ### Gateway status verification
 
@@ -327,30 +360,99 @@ This flow depends on the local OpenClaw config at `~/.openclaw/openclaw.json`, s
 
 ### Screenshot-based verification
 
-To verify the rendered UI visually instead of relying only on DOM output, run the app and capture screenshots with headless Chrome.
+Use screenshots as a manual visual verification step before committing UI work, especially when checking the live app against real OpenClaw data.
+
+Do not treat screenshot capture as part of the automated mock-gateway integration suite. The automated path should stay focused on DOM/HTML and SSE assertions.
+
+### Reliable live screenshot workflow
+
+Use this order for efficient and trustworthy manual verification:
+
+1. Start a fresh app instance on the fixed port:
+
+```bash
+npm start
+```
+
+2. Verify the app and browser assets are reachable:
+
+```bash
+curl -I http://127.0.0.1:4127
+curl -I http://127.0.0.1:4127/wasm/daneel.js
+```
+
+3. Capture the route through `scripts/verify-route.mjs`, not raw `--screenshot`, so the capture waits for hydration.
+
+4. Inspect both the screenshot and the saved DOM.
+
+5. Only if the verifier succeeds should the screenshot be treated as the final visual proof.
+
+When checking the real live app, use route-specific wait text that proves real data loaded:
+
+- dashboard: require `Gateway status`
+- dashboard: require `Connected to the OpenClaw Gateway over WebSocket`
+- agents: require `Agent tiles`
+- agents: require one or more real agent ids like `email` or `calendar`
+- agents: forbid `Loading agents`
+- agents: forbid `Gateway lookup failed`
+
+If the screenshot disagrees with the backend:
+
+- verify the backend directly with the manual live test:
+
+```bash
+cargo test --features server live_gateway_status_fetch_reports_healthy -- --ignored --nocapture
+```
+
+- inspect the gateway journal for live bridge handshake problems:
+
+```bash
+journalctl -u openclaw-gateway.service --since '5 minutes ago' --no-pager
+```
+
+This is especially important for the top-right ribbon. A stale dev process can keep sending an old invalid handshake and make the ribbon look degraded even after the source code is fixed.
+
+To verify the rendered UI visually, run the app and capture screenshots with headless Chrome.
 
 Start the app with the full dev workflow:
 
 ```bash
-npm run dev
+npm start
 ```
 
-Capture the home route:
+Preferred screenshot capture for the home route:
 
 ```bash
-timeout 25s google-chrome --headless=new --disable-gpu --no-sandbox --virtual-time-budget=15000 --window-size=1440,1200 --screenshot=/tmp/daneel-home.png http://127.0.0.1:4127
+node scripts/verify-route.mjs \
+  --url http://127.0.0.1:4127/ \
+  --screenshot /tmp/daneel-home.png \
+  --dom /tmp/daneel-home.html \
+  --wait-text "Mission Control" \
+  --wait-text "Gateway status"
 ```
 
-Capture the agents route:
+Preferred screenshot capture for the agents route:
 
 ```bash
-timeout 25s google-chrome --headless=new --disable-gpu --no-sandbox --virtual-time-budget=15000 --window-size=1440,1200 --screenshot=/tmp/daneel-agents.png http://127.0.0.1:4127/agents
+node scripts/verify-route.mjs \
+  --url http://127.0.0.1:4127/agents \
+  --screenshot /tmp/daneel-agents.png \
+  --dom /tmp/daneel-agents.html \
+  --wait-text "Agent tiles" \
+  --wait-text "email" \
+  --forbid-text "Loading agents" \
+  --forbid-text "Gateway lookup failed"
 ```
 
-Capture the dashboard with live gateway status:
+Preferred screenshot capture for the dashboard with live gateway status:
 
 ```bash
-timeout 25s google-chrome --headless=new --disable-gpu --no-sandbox --virtual-time-budget=15000 --window-size=1440,1200 --screenshot=/tmp/daneel-dashboard-gateway.png http://127.0.0.1:4127
+node scripts/verify-route.mjs \
+  --url http://127.0.0.1:4127/ \
+  --screenshot /tmp/daneel-dashboard-gateway.png \
+  --dom /tmp/daneel-dashboard-gateway.html \
+  --wait-text "Gateway status" \
+  --wait-text "Connected to the OpenClaw Gateway over WebSocket"
 ```
 
 What to verify from the screenshots:
@@ -359,8 +461,22 @@ What to verify from the screenshots:
 - the sidebar renders with Daneel branding and navigation
 - the active route is visually highlighted
 - the top bar and status pill are visible
+- the top-right ribbon says `Connected` in green when the live gateway is healthy
 - the page-specific content is present
 - Tailwind styling is clearly applied to spacing, typography, cards, borders, and colors
+
+What to verify from the saved DOM:
+
+- the required wait text is present in hydrated markup
+- loading placeholders are gone
+- route-specific failure text is absent
+- the status pill text matches the expected state
+
+Avoid this anti-pattern:
+
+- capturing `/tmp/*.png` with raw `google-chrome --screenshot` before hydration and then trusting the image
+
+That approach is fast, but it frequently captures SSR-only placeholders and leads to false conclusions.
 
 Known-good screenshot outputs used during validation:
 
@@ -377,7 +493,7 @@ As of the current scaffold:
 - the dashboard fetches gateway status through a Dioxus server function
 - the gateway status request reaches OpenClaw over loopback WebSocket
 - styling is loaded through the Dioxus asset pipeline
-- there is now a browser-driven cargo integration test using a mock gateway
+- there is now a mock-gateway cargo integration test for route DOM/HTML and live SSE behavior
 - there is no OpenClaw adapter yet
 - there is not yet a full Rust unit/integration suite beyond the SSR harness and the mock-gateway browser path
 
@@ -470,8 +586,11 @@ cargo check --features server
 cargo test --test e2e_mock_gateway
 ```
 
+If the change affects UI presentation, do a manual live-data visual pass after the automated checks by capturing and inspecting screenshots yourself.
+
 Expectations before commit:
 
 - code is formatted
 - warnings are removed, not ignored
-- the mock-gateway browser integration test passes
+- the mock-gateway integration test passes
+- UI changes get a manual screenshot-based visual check against the live app before commit

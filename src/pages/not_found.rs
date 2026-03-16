@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 #[component]
-pub fn NotFoundPage(segments: Vec<String>) -> Element {
+pub fn NotFound(segments: Vec<String>) -> Element {
     let attempted_path = if segments.is_empty() {
         "/".to_string()
     } else {
@@ -16,7 +16,7 @@ pub fn NotFoundPage(segments: Vec<String>) -> Element {
                 p { class: "m-0 mt-3 text-sm leading-7 text-slate-300 sm:text-base", "No page is registered for {attempted_path}." }
                 Link {
                     class: "mt-5 inline-flex items-center text-sm font-medium text-[var(--signal)] transition hover:text-emerald-200",
-                    to: crate::router::Route::DashboardPage {},
+                    to: crate::router::Route::Dashboard {},
                     "Return to dashboard"
                 }
             }

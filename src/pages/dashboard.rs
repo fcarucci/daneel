@@ -4,7 +4,7 @@ use crate::gateway::get_gateway_status;
 use crate::models::gateway::{GatewayLevel, GatewayStatusSnapshot};
 
 #[component]
-pub fn DashboardPage() -> Element {
+pub fn Dashboard() -> Element {
     let gateway_status = use_resource(|| async move { get_gateway_status().await });
 
     rsx! {

@@ -365,6 +365,39 @@ Tests:
 
 ---
 
+## T2.6 Add full event-driven webapp state sync
+
+Purpose:
+
+- keep operator-facing data fresh without relying on repeated request-response polling
+
+Output:
+
+- one shared server-side state synchronization layer that consumes gateway events and updates the web app's live data surfaces
+
+Initial scope:
+
+- gateway health and connectivity
+- agent healthy or unhealthy status
+- active session counts
+- recent agent activity state
+
+Delivery rules:
+
+- treat the gateway event stream as the source of truth for live runtime state
+- reuse the same synchronization backbone across dashboard, agents, and future graph surfaces
+- avoid duplicating separate live-update logic per route
+- preserve a clean degraded state when the event stream is unavailable
+
+Tests:
+
+- integration test: a gateway health event updates both the dashboard card and navbar status pill
+- integration test: an agent-status event updates the agents view without a full page reload
+- integration test: an active-session event updates aggregate and per-agent counts consistently
+- integration test: disconnect and reconnect behavior preserves a truthful degraded or recovered UI state
+
+---
+
 # Phase 3: OpenClaw Adapter Minimum Slice
 
 ## T3.1 Create the adapter trait and OpenClaw adapter module
@@ -793,29 +826,31 @@ Tests:
 7. T2.1
 8. T2.2
 9. T2.3
-10. T3.1
-11. T3.2
-12. T3.3
-13. T3.4
-14. T3.5
-15. T3.6
-16. T3.7
-17. T4.1
-18. T4.2
-19. T4.3
-20. T1.2
-21. T1.3
-22. T5.1
-23. T5.2
-24. T5.3
-25. T5.4
-26. T5.5
-27. T6.1
-28. T6.2
-29. T6.3
-30. T7.1
-31. T7.2
-32. T7.3
+10. T2.5
+11. T2.6
+12. T3.1
+13. T3.2
+14. T3.3
+15. T3.4
+16. T3.5
+17. T3.6
+18. T3.7
+19. T4.1
+20. T4.2
+21. T4.3
+22. T1.2
+23. T1.3
+24. T5.1
+25. T5.2
+26. T5.3
+27. T5.4
+28. T5.5
+29. T6.1
+30. T6.2
+31. T6.3
+32. T7.1
+33. T7.2
+34. T7.3
 
 ## Smallest Useful Vertical Slice
 
@@ -829,20 +864,22 @@ If we want the absolute minimum path before the full polish pass:
 6. T1.5
 7. T2.1
 8. T2.2
-9. T3.1
-10. T3.2
-11. T3.3
-12. T3.4
-13. T3.5
-14. T3.6
-15. T4.1
-16. T4.3
-17. T5.1
-18. T5.2
-19. T5.3
-20. T5.4
-21. T6.2
-22. T7.3
+9. T2.5
+10. T2.6
+11. T3.1
+12. T3.2
+13. T3.3
+14. T3.4
+15. T3.5
+16. T3.6
+17. T4.1
+18. T4.3
+19. T5.1
+20. T5.2
+21. T5.3
+22. T5.4
+23. T6.2
+24. T7.3
 
 ## POC Success Demo Script
 

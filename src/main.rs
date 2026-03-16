@@ -1,5 +1,6 @@
 mod components;
 mod gateway;
+mod live;
 mod models;
 mod pages;
 mod router;
@@ -10,7 +11,14 @@ use dioxus::prelude::*;
 
 #[cfg(feature = "server")]
 fn main() {
-    dioxus::LaunchBuilder::server().launch(App);
+    dioxus_server::serve(|| async move {
+        let hub = live::init_live_hub();
+        tokio::spawn(live::run_gateway_event_bridge(hub));
+
+        let router = live::router().merge(dioxus_server::router(App));
+
+        Ok(router)
+    });
 }
 
 #[cfg(not(feature = "server"))]
