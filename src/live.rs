@@ -26,12 +26,20 @@ use {
 };
 
 #[cfg(feature = "server")]
-mod server_consts {
-    pub const CONNECT_LIVE_REQUEST_ID: &str = "connect-live-1";
-    pub const HEALTH_LIVE_REQUEST_ID: &str = "health-live-1";
-    pub const GATEWAY_RETRY_DELAY_SECS: u64 = 5;
-    pub const SSE_KEEP_ALIVE_SECS: u64 = 15;
+struct LiveBridgeConfig {
+    connect_request_id: &'static str,
+    health_request_id: &'static str,
+    gateway_retry_delay_secs: u64,
+    sse_keep_alive_secs: u64,
 }
+
+#[cfg(feature = "server")]
+const LIVE_BRIDGE_CONFIG: LiveBridgeConfig = LiveBridgeConfig {
+    connect_request_id: "connect-live-1",
+    health_request_id: "health-live-1",
+    gateway_retry_delay_secs: 5,
+    sse_keep_alive_secs: 15,
+};
 
 #[cfg(feature = "server")]
 #[derive(Clone)]
@@ -137,7 +145,10 @@ pub async fn run_gateway_event_bridge(hub: LiveEventHub) {
         ));
         if let Err(error) = stream_gateway_events(&config, &hub).await {
             hub.publish(LiveGatewayEvent::disconnected(error));
-            tokio::time::sleep(Duration::from_secs(server_consts::GATEWAY_RETRY_DELAY_SECS)).await;
+            tokio::time::sleep(Duration::from_secs(
+                LIVE_BRIDGE_CONFIG.gateway_retry_delay_secs,
+            ))
+            .await;
         }
     }
 }
@@ -162,7 +173,7 @@ async fn stream_gateway_events(
         "Could not send gateway connect request",
     )
     .await?;
-    wait_for_response(&mut socket, server_consts::CONNECT_LIVE_REQUEST_ID).await?;
+    wait_for_response(&mut socket, LIVE_BRIDGE_CONFIG.connect_request_id).await?;
 
     send_gateway_request(
         &mut socket,
@@ -212,7 +223,7 @@ fn parse_health_event(payload: &Value) -> Option<LiveGatewayEvent> {
 #[cfg(feature = "server")]
 fn parse_health_response(payload: &Value) -> Option<LiveGatewayEvent> {
     let response_id = payload.get("id").and_then(Value::as_str)?;
-    if response_id != server_consts::HEALTH_LIVE_REQUEST_ID {
+    if response_id != LIVE_BRIDGE_CONFIG.health_request_id {
         return None;
     }
 
@@ -292,21 +303,21 @@ async fn sse_gateway_events() -> Sse<impl futures_util::Stream<Item = Result<Eve
     });
     let stream = initial_stream.chain(update_stream);
 
-    Sse::new(stream).keep_alive(
-        KeepAlive::new().interval(Duration::from_secs(server_consts::SSE_KEEP_ALIVE_SECS)),
-    )
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(
+        LIVE_BRIDGE_CONFIG.sse_keep_alive_secs,
+    )))
 }
 
 #[cfg(feature = "server")]
 fn connect_live_request(config: &LoadedGatewayConfig) -> Value {
-    connect_request(server_consts::CONNECT_LIVE_REQUEST_ID, &config.token)
+    connect_request(LIVE_BRIDGE_CONFIG.connect_request_id, &config.token)
 }
 
 #[cfg(feature = "server")]
 fn health_live_request() -> Value {
     json!({
         "type": "req",
-        "id": server_consts::HEALTH_LIVE_REQUEST_ID,
+        "id": LIVE_BRIDGE_CONFIG.health_request_id,
         "method": "health",
         "params": {}
     })
