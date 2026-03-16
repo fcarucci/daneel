@@ -39,6 +39,7 @@ High-level goals:
 - Default app platform feature: `web`
 - Dioxus app metadata in `Dioxus.toml`
 - Tailwind CSS `4.2.1` via `@tailwindcss/cli`
+- Playwright route verification using the system `google-chrome`
 - Tailwind source stylesheet in `styles/app.css`
 - Generated application stylesheet in `assets/main.css`
 - Dioxus fullstack server functions for backend calls
@@ -78,6 +79,7 @@ Expected tools:
 - `cargo`
 - `rustfmt`
 - `dx` (Dioxus CLI)
+- `google-chrome`
 - `wasm32-unknown-unknown` Rust target
 
 Useful checks:
@@ -282,6 +284,8 @@ Prefer the repo verifier over raw `google-chrome --dump-dom` when you need a tru
 
 Use the verifier in `scripts/verify-route.mjs` because it:
 
+- uses Playwright to drive the page through normal browser APIs
+- uses the system `google-chrome` binary instead of Playwright's bundled browser
 - waits for the page to finish hydrating
 - waits for the hashed `/assets/main-*.css` stylesheet to be present
 - waits for the page background styling to be applied
@@ -291,7 +295,7 @@ Use the verifier in `scripts/verify-route.mjs` because it:
 Example for the agents route:
 
 ```bash
-node scripts/verify-route.mjs \
+npm run verify:route -- \
   --url http://127.0.0.1:4127/agents \
   --screenshot /tmp/daneel-agents-live.png \
   --dom /tmp/daneel-agents-live.html \
@@ -301,7 +305,7 @@ node scripts/verify-route.mjs \
   --forbid-text "Gateway lookup failed"
 ```
 
-Use raw `--dump-dom` only as a quick secondary signal.
+Use raw `google-chrome --dump-dom` only as a quick secondary signal.
 
 To confirm the page hydrates and renders actual app DOM:
 
@@ -423,7 +427,7 @@ npm start
 Preferred screenshot capture for the home route:
 
 ```bash
-node scripts/verify-route.mjs \
+npm run verify:route -- \
   --url http://127.0.0.1:4127/ \
   --screenshot /tmp/daneel-home.png \
   --dom /tmp/daneel-home.html \
@@ -434,7 +438,7 @@ node scripts/verify-route.mjs \
 Preferred screenshot capture for the agents route:
 
 ```bash
-node scripts/verify-route.mjs \
+npm run verify:route -- \
   --url http://127.0.0.1:4127/agents \
   --screenshot /tmp/daneel-agents.png \
   --dom /tmp/daneel-agents.html \
@@ -447,7 +451,7 @@ node scripts/verify-route.mjs \
 Preferred screenshot capture for the dashboard with live gateway status:
 
 ```bash
-node scripts/verify-route.mjs \
+npm run verify:route -- \
   --url http://127.0.0.1:4127/ \
   --screenshot /tmp/daneel-dashboard-gateway.png \
   --dom /tmp/daneel-dashboard-gateway.html \
@@ -475,6 +479,11 @@ What to verify from the saved DOM:
 Avoid this anti-pattern:
 
 - capturing `/tmp/*.png` with raw `google-chrome --screenshot` before hydration and then trusting the image
+
+Environment note:
+
+- keep `google-chrome` installed on the machine and let Playwright drive that binary
+- do not rely on Playwright's bundled Chromium in this environment; the system Chrome path is the stable option here
 
 That approach is fast, but it frequently captures SSR-only placeholders and leads to false conclusions.
 

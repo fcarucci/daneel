@@ -4,11 +4,13 @@
     "watch:css": "node scripts/watch-css.mjs",
     "dev": "bash scripts/dev.sh 4127 127.0.0.1",
     "start": "bash scripts/dev.sh 4127 127.0.0.1",
-    "github:admin": "node scripts/github-admin.mjs"
+    "github:admin": "node scripts/github-admin.mjs",
+    "verify:route": "node scripts/verify-route.mjs"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.2.1",
     "concurrently": "^9.2.1",
+    "playwright": "^1.58.2",
     "tailwindcss": "^4.2.1"
   }
 }

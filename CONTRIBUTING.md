@@ -17,6 +17,7 @@ Install the core prerequisites:
 - `cargo`
 - `dx`
 - `npm`
+- `google-chrome`
 
 This repository is expected to be developed the same way it is used here:
 
@@ -57,6 +58,8 @@ Install frontend dependencies:
 ```bash
 npm install
 ```
+
+This installs the local Playwright package used by the repo verifier. In this environment, the verifier should drive the system `google-chrome` binary rather than Playwright's bundled browser.
 
 Recommended first checks:
 
@@ -116,6 +119,18 @@ If you change rendering or route behavior, include the browser integration pass 
 
 ```bash
 cargo test --test e2e_mock_gateway
+```
+
+For manual visual verification, use the route verifier:
+
+```bash
+npm run verify:route -- \
+  --url http://127.0.0.1:4127/agents \
+  --screenshot /tmp/daneel-agents.png \
+  --dom /tmp/daneel-agents.html \
+  --wait-text "Agent tiles" \
+  --wait-text "email" \
+  --forbid-text "Loading agents"
 ```
 
 ## Pull Request Expectations

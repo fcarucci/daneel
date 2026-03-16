@@ -7,6 +7,7 @@ Daneel is intended to be a single Rust codebase with:
 - a Dioxus fullstack server
 - a WASM frontend target
 - Tailwind CSS 4.0 for styling
+- Playwright-based route verification driven by system `google-chrome`
 
 This document captures the local development setup prepared for this repository on March 14, 2026.
 
@@ -81,6 +82,8 @@ If Dioxus CLI is present:
 ```bash
 dx --version
 dx serve
+npm install
+npm run verify:route -- --help
 ```
 
 ## Notes For Daneel
@@ -88,4 +91,5 @@ dx serve
 - The backend and frontend are both expected to live in Rust.
 - The frontend will compile to WebAssembly.
 - The local setup is aligned with the existing design docs in `daneel_requirements.md` and `docs/daneel_technical_design.md`.
-- Tailwind CSS 4.0 is part of the design target, but no Node or frontend asset pipeline has been installed yet in this repository.
+- Tailwind CSS and the Playwright verifier are part of the checked-in frontend workflow now.
+- The preferred browser automation setup in this environment is Playwright driving the system `google-chrome` binary.
