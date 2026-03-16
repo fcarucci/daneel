@@ -3,6 +3,21 @@ use dioxus::prelude::*;
 use crate::gateway::get_agent_overview;
 use crate::models::agents::{AgentOverviewItem, AgentOverviewSnapshot};
 
+const SECOND_MS: u64 = 1_000;
+const MINUTE_MS: u64 = 60_000;
+const HOUR_MS: u64 = 3_600_000;
+const DAY_MS: u64 = 86_400_000;
+const ACTIVE_WINDOW_MS: u64 = 600_000;
+
+const AGENT_TILE_ACTIVE_CLASS: &str = "group relative overflow-hidden rounded-[1.9rem] border border-emerald-300/35 bg-[linear-gradient(180deg,rgba(14,28,32,0.96),rgba(5,12,24,0.98))] px-5 py-5 shadow-[0_0_0_1px_rgba(110,231,183,0.14),0_0_42px_rgba(16,185,129,0.28),0_0_90px_rgba(16,185,129,0.08),0_24px_64px_rgba(2,6,23,0.42)] backdrop-blur-xl";
+const AGENT_TILE_IDLE_CLASS: &str = "group relative overflow-hidden rounded-[1.9rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(6,11,25,0.98))] px-5 py-5 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl";
+const STATUS_DOT_ACTIVE_CLASS: &str = "h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.95)]";
+const STATUS_DOT_IDLE_CLASS: &str = "h-2.5 w-2.5 rounded-full bg-slate-500";
+const HEART_ACTIVE_CLASS: &str = "shrink-0 text-rose-400 drop-shadow-[0_0_8px_rgba(251,113,133,0.55)]";
+const HEART_IDLE_CLASS: &str = "shrink-0 text-slate-600";
+const RECENT_BADGE_ACTIVE_CLASS: &str = "inline-flex rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-emerald-200";
+const RECENT_BADGE_IDLE_CLASS: &str = "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-300";
+
 #[component]
 pub fn Agents() -> Element {
     let agent_overview = use_resource(|| async move { get_agent_overview().await });
@@ -91,30 +106,30 @@ fn MetricCard(label: String, value: String, detail: String) -> Element {
 fn AgentCard(agent: AgentOverviewItem) -> Element {
     let is_active_now = agent
         .latest_activity_age_ms
-        .is_some_and(|age| age <= 600_000);
+        .is_some_and(|age| age <= ACTIVE_WINDOW_MS);
     let tile_class = if is_active_now {
-        "group relative overflow-hidden rounded-[1.9rem] border border-emerald-300/35 bg-[linear-gradient(180deg,rgba(14,28,32,0.96),rgba(5,12,24,0.98))] px-5 py-5 shadow-[0_0_0_1px_rgba(110,231,183,0.14),0_0_42px_rgba(16,185,129,0.28),0_0_90px_rgba(16,185,129,0.08),0_24px_64px_rgba(2,6,23,0.42)] backdrop-blur-xl"
+        AGENT_TILE_ACTIVE_CLASS
     } else {
-        "group relative overflow-hidden rounded-[1.9rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(6,11,25,0.98))] px-5 py-5 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl"
+        AGENT_TILE_IDLE_CLASS
     };
     let status_dot_class = if is_active_now {
-        "h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.95)]"
+        STATUS_DOT_ACTIVE_CLASS
     } else {
-        "h-2.5 w-2.5 rounded-full bg-slate-500"
+        STATUS_DOT_IDLE_CLASS
     };
     let heart_class = if agent.heartbeat_enabled {
-        "shrink-0 text-rose-400 drop-shadow-[0_0_8px_rgba(251,113,133,0.55)]"
+        HEART_ACTIVE_CLASS
     } else {
-        "shrink-0 text-slate-600"
+        HEART_IDLE_CLASS
     };
     let recent_activity_badge = agent
         .latest_activity_age_ms
         .map(format_recent_activity_badge)
         .unwrap_or_else(|| "No activity".to_string());
     let recent_activity_badge_class = if is_active_now {
-        "inline-flex rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-emerald-200"
+        RECENT_BADGE_ACTIVE_CLASS
     } else {
-        "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-300"
+        RECENT_BADGE_IDLE_CLASS
     };
     rsx! {
         article { class: tile_class,
@@ -164,14 +179,14 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
 }
 
 fn format_recent_activity_badge(age_ms: u64) -> String {
-    if age_ms < 60_000 {
-        format!("{}s ago", age_ms / 1_000)
-    } else if age_ms < 3_600_000 {
-        format!("{}m ago", age_ms / 60_000)
-    } else if age_ms < 86_400_000 {
-        format!("{}h ago", age_ms / 3_600_000)
+    if age_ms < MINUTE_MS {
+        format!("{}s ago", age_ms / SECOND_MS)
+    } else if age_ms < HOUR_MS {
+        format!("{}m ago", age_ms / MINUTE_MS)
+    } else if age_ms < DAY_MS {
+        format!("{}h ago", age_ms / HOUR_MS)
     } else {
-        format!("{}d ago", age_ms / 86_400_000)
+        format!("{}d ago", age_ms / DAY_MS)
     }
 }
 // SPDX-License-Identifier: Apache-2.0
