@@ -166,7 +166,7 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
 }
 
 fn is_agent_active(displayed_age_ms: Option<u64>) -> bool {
-    displayed_age_ms.is_some_and(|age| age <= ACTIVE_WINDOW_MS)
+    displayed_age_ms.is_some_and(|age| age < ACTIVE_WINDOW_MS)
 }
 
 fn agent_header(
