@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use dioxus::prelude::*;
 
 #[component]
@@ -21,4 +23,3 @@ pub fn Settings() -> Element {
         }
     }
 }
-// SPDX-License-Identifier: Apache-2.0

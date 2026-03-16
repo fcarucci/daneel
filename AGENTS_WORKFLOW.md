@@ -71,7 +71,9 @@ Example:
 
 11. Link the task to the merge request.
 
-12. Add relevant implementation notes to the merge request description.
+12. Set the GitHub task status to `Ready for Merge`.
+
+13. Add relevant implementation notes to the merge request description.
 
 Include:
 
@@ -80,7 +82,7 @@ Include:
 - any follow-up work or known limitations
 - screenshots when the UI changed materially
 
-13. Submit the merge request and provide the link.
+14. Submit the merge request and provide the link.
 
 ## Testing Expectations
 
@@ -115,3 +117,4 @@ A task is ready for review when:
 - manual visual verification is complete when UI changed
 - branch is pushed
 - merge request is opened and linked to the task
+- GitHub task status is `Ready for Merge`

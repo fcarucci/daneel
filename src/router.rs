@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use dioxus::prelude::*;
 
 use crate::components::layout::AppLayout;
@@ -27,4 +29,3 @@ impl Route {
         }
     }
 }
-// SPDX-License-Identifier: Apache-2.0

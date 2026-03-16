@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use dioxus::prelude::*;
 
 use crate::gateway::get_gateway_status;

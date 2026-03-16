@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use dioxus::prelude::*;
 
 use crate::components::{navbar::TopBar, sidebar::Sidebar};
@@ -19,4 +21,3 @@ pub fn AppLayout() -> Element {
         }
     }
 }
-// SPDX-License-Identifier: Apache-2.0

@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "server"), allow(dead_code))]
 
+// SPDX-License-Identifier: Apache-2.0
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -39,4 +41,3 @@ pub enum GatewayLevel {
     Healthy,
     Degraded,
 }
-// SPDX-License-Identifier: Apache-2.0

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 mod components;
 mod gateway;
 mod live;
@@ -34,4 +36,3 @@ fn App() -> Element {
         Router::<router::Route> {}
     }
 }
-// SPDX-License-Identifier: Apache-2.0

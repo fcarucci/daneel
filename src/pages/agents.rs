@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use dioxus::prelude::*;
 
 use crate::gateway::get_agent_overview;
@@ -206,5 +208,3 @@ fn agent_sessions(
         }
     }
 }
-
-// SPDX-License-Identifier: Apache-2.0

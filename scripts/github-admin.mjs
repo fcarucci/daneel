@@ -622,6 +622,7 @@ async function setProjectStatusWorkflow() {
         { name: "Backlog", color: "GRAY", description: "Known work that is not yet ready to start" },
         { name: "Ready", color: "BLUE", description: "Ready to pick up next" },
         { name: "In Progress", color: "YELLOW", description: "Actively being worked on" },
+        { name: "Ready for Merge", color: "ORANGE", description: "Implementation is complete and awaiting merge" },
         { name: "Blocked", color: "RED", description: "Blocked by an external dependency or decision" },
         { name: "Done", color: "GREEN", description: "Completed work" },
       ],
@@ -655,7 +656,9 @@ async function setProjectStatusWorkflow() {
     );
   }
 
-  console.log("Updated Project Status workflow to Backlog / Ready / In Progress / Blocked / Done.");
+  console.log(
+    "Updated Project Status workflow to Backlog / Ready / In Progress / Ready for Merge / Blocked / Done.",
+  );
 }
 
 async function findTask(options) {

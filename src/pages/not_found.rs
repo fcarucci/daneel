@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use dioxus::prelude::*;
 
 #[component]
@@ -23,4 +25,3 @@ pub fn NotFound(segments: Vec<String>) -> Element {
         }
     }
 }
-// SPDX-License-Identifier: Apache-2.0

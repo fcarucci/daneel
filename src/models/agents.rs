@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -21,4 +23,3 @@ pub struct AgentOverviewItem {
     pub latest_session_key: Option<String>,
     pub latest_activity_age_ms: Option<u64>,
 }
-// SPDX-License-Identifier: Apache-2.0
