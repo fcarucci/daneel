@@ -26,6 +26,14 @@ use {
 };
 
 #[cfg(feature = "server")]
+mod server_consts {
+    pub const CONNECT_LIVE_REQUEST_ID: &str = "connect-live-1";
+    pub const HEALTH_LIVE_REQUEST_ID: &str = "health-live-1";
+    pub const GATEWAY_RETRY_DELAY_SECS: u64 = 5;
+    pub const SSE_KEEP_ALIVE_SECS: u64 = 15;
+}
+
+#[cfg(feature = "server")]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LiveGatewayLevel {
@@ -81,6 +89,14 @@ impl LiveEventHub {
 
 #[cfg(feature = "server")]
 impl LiveGatewayEvent {
+    fn new(level: LiveGatewayLevel, summary: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            level,
+            summary: summary.into(),
+            detail: detail.into(),
+        }
+    }
+
     fn disconnected(detail: String) -> Self {
         Self::connecting("Gateway event stream reconnecting", detail)
     }
@@ -90,31 +106,23 @@ impl LiveGatewayEvent {
     }
 
     fn degraded(summary: &str, detail: String) -> Self {
-        Self {
-            level: LiveGatewayLevel::Degraded,
-            summary: summary.to_string(),
-            detail,
-        }
+        Self::new(LiveGatewayLevel::Degraded, summary, detail)
     }
 
     fn connecting(summary: &str, detail: String) -> Self {
-        Self {
-            level: LiveGatewayLevel::Connecting,
-            summary: summary.to_string(),
-            detail,
-        }
+        Self::new(LiveGatewayLevel::Connecting, summary, detail)
     }
 
     fn health_update(status: &str) -> Self {
-        Self {
-            level: if status.eq_ignore_ascii_case("healthy") {
+        Self::new(
+            if status.eq_ignore_ascii_case("healthy") {
                 LiveGatewayLevel::Healthy
             } else {
                 LiveGatewayLevel::Degraded
             },
-            summary: format!("Gateway health update: {status}."),
-            detail: "Live gateway event received.".to_string(),
-        }
+            format!("Gateway health update: {status}."),
+            "Live gateway event received.",
+        )
     }
 }
 
@@ -140,7 +148,7 @@ pub async fn run_gateway_event_bridge(hub: LiveEventHub) {
         ));
         if let Err(error) = stream_gateway_events(&config, &hub).await {
             hub.publish(LiveGatewayEvent::disconnected(error));
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(server_consts::GATEWAY_RETRY_DELAY_SECS)).await;
         }
     }
 }
@@ -165,7 +173,7 @@ async fn stream_gateway_events(
         "Could not send gateway connect request",
     )
     .await?;
-    wait_for_response(&mut socket, "connect-live-1").await?;
+    wait_for_response(&mut socket, server_consts::CONNECT_LIVE_REQUEST_ID).await?;
 
     send_gateway_request(
         &mut socket,
@@ -193,11 +201,13 @@ async fn stream_gateway_events(
 #[cfg(feature = "server")]
 fn parse_gateway_event(payload: &Value) -> Option<LiveGatewayEvent> {
     let kind = payload.get("type").and_then(Value::as_str)?;
-    match kind {
-        "event" => parse_health_event(payload),
-        "res" => parse_health_response(payload),
-        _ => None,
+    if kind == "event" {
+        return parse_health_event(payload);
     }
+    if kind == "res" {
+        return parse_health_response(payload);
+    }
+    None
 }
 
 #[cfg(feature = "server")]
@@ -213,7 +223,7 @@ fn parse_health_event(payload: &Value) -> Option<LiveGatewayEvent> {
 #[cfg(feature = "server")]
 fn parse_health_response(payload: &Value) -> Option<LiveGatewayEvent> {
     let response_id = payload.get("id").and_then(Value::as_str)?;
-    if response_id != "health-live-1" {
+    if response_id != server_consts::HEALTH_LIVE_REQUEST_ID {
         return None;
     }
 
@@ -234,17 +244,27 @@ fn parse_health_response(payload: &Value) -> Option<LiveGatewayEvent> {
 
 #[cfg(feature = "server")]
 fn health_status_from_event(payload: &Value) -> Option<String> {
-    value_at_string_path(payload, &["payload", "status", "health", "state"])
-        .or_else(|| value_at_string_path(payload, &["payload", "status"]))
-        .or_else(|| value_at_string_path(payload, &["payload", "health"]))
-        .or_else(|| value_at_string_path(payload, &["payload", "state"]))
+    value_at_any_string_path(
+        payload,
+        &[
+            &["payload", "status", "health", "state"],
+            &["payload", "status"],
+            &["payload", "health"],
+            &["payload", "state"],
+        ],
+    )
 }
 
 #[cfg(feature = "server")]
 fn health_status_from_response(payload: &Value) -> Option<String> {
-    value_at_string_path(payload, &["payload", "status"])
-        .or_else(|| value_at_string_path(payload, &["payload", "health"]))
-        .or_else(|| value_at_string_path(payload, &["payload", "state"]))
+    value_at_any_string_path(
+        payload,
+        &[
+            &["payload", "status"],
+            &["payload", "health"],
+            &["payload", "state"],
+        ],
+    )
 }
 
 #[cfg(feature = "server")]
@@ -257,40 +277,49 @@ fn value_at_string_path(value: &Value, path: &[&str]) -> Option<String> {
 }
 
 #[cfg(feature = "server")]
+fn value_at_any_string_path(value: &Value, paths: &[&[&str]]) -> Option<String> {
+    paths
+        .iter()
+        .find_map(|path| value_at_string_path(value, path))
+}
+
+#[cfg(feature = "server")]
+fn event_to_sse(event: &LiveGatewayEvent) -> Option<Result<Event, Infallible>> {
+    serde_json::to_string(event)
+        .ok()
+        .map(|data| Ok(Event::default().data(data)))
+}
+
+#[cfg(feature = "server")]
 async fn sse_gateway_events() -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
     let hub = LIVE_HUB
         .get()
         .expect("LiveEventHub must be initialized before serving SSE.");
-    let initial_event = hub.latest().and_then(|event| {
-        serde_json::to_string(&event)
-            .ok()
-            .map(|data| Ok(Event::default().data(data)))
-    });
+    let initial_event = hub.latest().and_then(|event| event_to_sse(&event));
     let initial_stream = stream::iter(initial_event);
     let update_stream = BroadcastStream::new(hub.subscribe()).filter_map(|item| async move {
         match item {
-            Ok(event) => {
-                let data = serde_json::to_string(&event).ok()?;
-                Some(Ok(Event::default().data(data)))
-            }
+            Ok(event) => event_to_sse(&event),
             Err(_) => None,
         }
     });
     let stream = initial_stream.chain(update_stream);
 
-    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+    Sse::new(stream).keep_alive(
+        KeepAlive::new().interval(Duration::from_secs(server_consts::SSE_KEEP_ALIVE_SECS)),
+    )
 }
 
 #[cfg(feature = "server")]
 fn connect_live_request(config: &LoadedGatewayConfig) -> Value {
-    connect_request("connect-live-1", &config.token)
+    connect_request(server_consts::CONNECT_LIVE_REQUEST_ID, &config.token)
 }
 
 #[cfg(feature = "server")]
 fn health_live_request() -> Value {
     json!({
         "type": "req",
-        "id": "health-live-1",
+        "id": server_consts::HEALTH_LIVE_REQUEST_ID,
         "method": "health",
         "params": {}
     })
