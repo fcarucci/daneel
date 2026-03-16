@@ -13,13 +13,9 @@ mod status;
 mod ws;
 
 pub(crate) use config::{DEFAULT_GATEWAY_URL, load_gateway_config};
-
 #[cfg(feature = "server")]
 pub(crate) use config::LoadedGatewayConfig;
-pub(crate) use ws::Envelope;
 
-#[cfg(feature = "server")]
-pub(crate) use status::fetch_gateway_status_via_websocket;
 #[cfg(feature = "server")]
 pub(crate) use ws::{connect_request, wait_for_response};
 
@@ -79,7 +75,7 @@ fn degraded_gateway_status(
 mod tests {
     use crate::models::gateway::GatewayLevel;
 
-    use super::{connect_request, fetch_gateway_status_via_websocket, load_gateway_config};
+    use super::{connect_request, load_gateway_config};
 
     #[test]
     fn connect_request_uses_backend_gateway_identity() {

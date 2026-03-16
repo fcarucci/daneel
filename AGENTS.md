@@ -593,6 +593,7 @@ npm run build:css
 cargo fmt --all
 cargo check --features server
 cargo test --test e2e_mock_gateway
+dx serve --web --fullstack --addr 127.0.0.1 --port 4127 --open false
 ```
 
 If the change affects UI presentation, do a manual live-data visual pass after the automated checks by capturing and inspecting screenshots yourself.
@@ -602,4 +603,5 @@ Expectations before commit:
 - code is formatted
 - warnings are removed, not ignored
 - the mock-gateway integration test passes
+- the app is verified to start successfully with `dx serve --web --fullstack`
 - UI changes get a manual screenshot-based visual check against the live app before commit
