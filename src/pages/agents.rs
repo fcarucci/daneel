@@ -138,40 +138,76 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
                 div { class: "pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-emerald-300/14 blur-3xl" }
                 div { class: "pointer-events-none absolute inset-0 rounded-[1.9rem] ring-1 ring-emerald-300/15" }
             }
-            div { class: "flex items-start justify-between gap-4 px-1",
-                div { class: "min-w-0",
-                    div { class: "flex items-center gap-2.5",
-                        span { class: status_dot_class }
-                        h3 { class: "m-0 truncate text-base font-semibold tracking-[-0.03em] text-white", "{agent.name}" }
-                    }
-                }
-                div { class: "ml-2 flex shrink-0 items-center gap-2",
-                    if agent.is_default {
-                        span { class: "inline-flex rounded-[999px] border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-cyan-200", "Default" }
-                    }
-                    span { class: recent_activity_badge_class, "{recent_activity_badge}" }
+            AgentHeader {
+                name: agent.name.clone(),
+                status_dot_class,
+                is_default: agent.is_default,
+                recent_activity_badge_class,
+                recent_activity_badge: recent_activity_badge.clone(),
+            }
+            AgentSessions {
+                active_session_count: agent.active_session_count,
+                latest_session_key: agent.latest_session_key.clone(),
+                heart_class,
+                heartbeat_enabled: agent.heartbeat_enabled,
+            }
+        }
+    }
+}
+
+#[component]
+fn AgentHeader(
+    name: String,
+    status_dot_class: &'static str,
+    is_default: bool,
+    recent_activity_badge_class: &'static str,
+    recent_activity_badge: String,
+) -> Element {
+    rsx! {
+        div { class: "flex items-start justify-between gap-4 px-1",
+            div { class: "min-w-0",
+                div { class: "flex items-center gap-2.5",
+                    span { class: status_dot_class }
+                    h3 { class: "m-0 truncate text-base font-semibold tracking-[-0.03em] text-white", "{name}" }
                 }
             }
-            div { class: "mt-4 rounded-[1.4rem] border border-white/6 bg-white/[0.03] px-4 py-4",
-                div { class: "grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm",
-                    p { class: "m-0 text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-slate-500", "Active sessions" }
-                    p { class: "m-0 text-right font-semibold text-white", "{agent.active_session_count}" }
+            div { class: "ml-2 flex shrink-0 items-center gap-2",
+                if is_default {
+                    span { class: "inline-flex rounded-[999px] border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-cyan-200", "Default" }
                 }
-                div { class: "mt-3 flex items-end justify-between gap-3",
-                    if let Some(session_key) = &agent.latest_session_key {
-                        p { class: "m-0 min-w-0 flex-1 truncate pr-2 text-[0.7rem] leading-5 text-slate-500", "Latest session: {session_key}" }
-                    } else {
-                        div { class: "flex-1" }
-                    }
-                    svg {
-                        class: heart_class,
-                        view_box: "0 0 24 24",
-                        width: "16",
-                        height: "16",
-                        fill: "currentColor",
-                        "aria-label": if agent.heartbeat_enabled { "Heartbeat enabled" } else { "Heartbeat disabled" },
-                        path { d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" }
-                    }
+                span { class: recent_activity_badge_class, "{recent_activity_badge}" }
+            }
+        }
+    }
+}
+
+#[component]
+fn AgentSessions(
+    active_session_count: u64,
+    latest_session_key: Option<String>,
+    heart_class: &'static str,
+    heartbeat_enabled: bool,
+) -> Element {
+    rsx! {
+        div { class: "mt-4 rounded-[1.4rem] border border-white/6 bg-white/[0.03] px-4 py-4",
+            div { class: "grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm",
+                p { class: "m-0 text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-slate-500", "Active sessions" }
+                p { class: "m-0 text-right font-semibold text-white", "{active_session_count}" }
+            }
+            div { class: "mt-3 flex items-end justify-between gap-3",
+                if let Some(session_key) = latest_session_key {
+                    p { class: "m-0 min-w-0 flex-1 truncate pr-2 text-[0.7rem] leading-5 text-slate-500", "Latest session: {session_key}" }
+                } else {
+                    div { class: "flex-1" }
+                }
+                svg {
+                    class: heart_class,
+                    view_box: "0 0 24 24",
+                    width: "16",
+                    height: "16",
+                    fill: "currentColor",
+                    "aria-label": if heartbeat_enabled { "Heartbeat enabled" } else { "Heartbeat disabled" },
+                    path { d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" }
                 }
             }
         }
