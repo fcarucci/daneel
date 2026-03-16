@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use dioxus::prelude::*;
-use serde::Deserialize;
-
 use crate::gateway::get_gateway_status;
 use crate::models::gateway::GatewayLevel;
+use crate::models::live_gateway::{LiveGatewayEvent, LiveGatewayLevel};
 
 #[component]
 pub fn TopBar() -> Element {
@@ -157,22 +156,6 @@ fn live_stream_enabled() -> bool {
         .and_then(|window| window.location().search().ok())
         .map(|query| !query.contains("e2e-disable-live=1"))
         .unwrap_or(true)
-}
-
-#[derive(Clone, Copy, Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum LiveGatewayLevel {
-    Healthy,
-    Degraded,
-    Connecting,
-}
-
-#[allow(dead_code)]
-#[derive(Clone, Debug, Deserialize)]
-struct LiveGatewayEvent {
-    level: LiveGatewayLevel,
-    summary: String,
-    detail: String,
 }
 
 #[cfg(target_arch = "wasm32")]

@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 #[cfg(feature = "server")]
-use serde::{Deserialize, Serialize};
+use crate::models::live_gateway::{LiveGatewayEvent, LiveGatewayLevel};
 
 #[cfg(feature = "server")]
 use {
@@ -31,23 +31,6 @@ mod server_consts {
     pub const HEALTH_LIVE_REQUEST_ID: &str = "health-live-1";
     pub const GATEWAY_RETRY_DELAY_SECS: u64 = 5;
     pub const SSE_KEEP_ALIVE_SECS: u64 = 15;
-}
-
-#[cfg(feature = "server")]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LiveGatewayLevel {
-    Healthy,
-    Degraded,
-    Connecting,
-}
-
-#[cfg(feature = "server")]
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct LiveGatewayEvent {
-    pub level: LiveGatewayLevel,
-    pub summary: String,
-    pub detail: String,
 }
 
 #[cfg(feature = "server")]
