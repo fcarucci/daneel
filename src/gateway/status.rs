@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use serde_json::Value;
+
 use crate::models::gateway::{GatewayLevel, GatewayStatusSnapshot};
 
 use super::config::LoadedGatewayConfig;
@@ -22,14 +24,6 @@ pub(crate) async fn fetch_gateway_status_via_websocket(
         &connect_frame,
         &health_frame,
     ))
-}
-
-pub(crate) fn map_gateway_level(label: &str) -> GatewayLevel {
-    if label.eq_ignore_ascii_case("healthy") {
-        GatewayLevel::Healthy
-    } else {
-        GatewayLevel::Degraded
-    }
 }
 
 pub(crate) fn map_gateway_status_snapshot(
@@ -65,16 +59,15 @@ pub(crate) fn map_gateway_status_snapshot(
                 .and_then(|payload| find_u64(payload, &["uptimeMs"]))
         });
 
-    let health_label = health_frame
-        .payload
-        .as_ref()
-        .and_then(|payload| find_string(payload, &["status", "health", "state"]))
-        .unwrap_or_else(|| "healthy".to_string());
+    let health = health_status_from_payload(health_frame.payload.as_ref());
 
     GatewayStatusSnapshot {
         connected: true,
-        level: map_gateway_level(&health_label),
-        summary: format!("Connected to the OpenClaw Gateway over WebSocket ({health_label})."),
+        level: health.level(),
+        summary: format!(
+            "Connected to the OpenClaw Gateway over WebSocket ({}).",
+            health.label
+        ),
         detail: format!(
             "Gateway status was fetched through the documented loopback WS connection at {}.",
             config.ws_url
@@ -84,4 +77,46 @@ pub(crate) fn map_gateway_status_snapshot(
         state_version,
         uptime_ms,
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum HealthState {
+    Healthy,
+    Degraded,
+}
+
+impl HealthState {
+    fn from_label(label: &str) -> Self {
+        if label.eq_ignore_ascii_case("healthy") {
+            HealthState::Healthy
+        } else {
+            HealthState::Degraded
+        }
+    }
+
+    fn level(self) -> GatewayLevel {
+        match self {
+            HealthState::Healthy => GatewayLevel::Healthy,
+            HealthState::Degraded => GatewayLevel::Degraded,
+        }
+    }
+}
+
+struct HealthStatus {
+    label: String,
+    state: HealthState,
+}
+
+impl HealthStatus {
+    fn level(&self) -> GatewayLevel {
+        self.state.level()
+    }
+}
+
+fn health_status_from_payload(payload: Option<&Value>) -> HealthStatus {
+    let label = payload
+        .and_then(|payload| find_string(payload, &["status", "health", "state"]))
+        .unwrap_or_else(|| "healthy".to_string());
+    let state = HealthState::from_label(&label);
+    HealthStatus { label, state }
 }
