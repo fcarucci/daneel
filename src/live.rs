@@ -55,18 +55,24 @@ impl LiveEventHub {
     }
 
     pub fn publish(&self, event: LiveGatewayEvent) {
-        *self
-            .latest
-            .write()
-            .expect("lock live gateway event snapshot") = Some(event.clone());
+        *self.write_latest() = Some(event.clone());
         let _ = self.tx.send(event);
     }
 
     pub fn latest(&self) -> Option<LiveGatewayEvent> {
+        self.read_latest().clone()
+    }
+
+    fn write_latest(&self) -> std::sync::RwLockWriteGuard<'_, Option<LiveGatewayEvent>> {
+        self.latest
+            .write()
+            .expect("lock live gateway event snapshot")
+    }
+
+    fn read_latest(&self) -> std::sync::RwLockReadGuard<'_, Option<LiveGatewayEvent>> {
         self.latest
             .read()
             .expect("lock live gateway event snapshot")
-            .clone()
     }
 }
 
@@ -275,9 +281,7 @@ fn event_to_sse(event: &LiveGatewayEvent) -> Option<Result<Event, Infallible>> {
 
 #[cfg(feature = "server")]
 async fn sse_gateway_events() -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
-    let hub = LIVE_HUB
-        .get()
-        .expect("LiveEventHub must be initialized before serving SSE.");
+    let hub = require_live_hub();
     let initial_event = hub.latest().and_then(|event| event_to_sse(&event));
     let initial_stream = stream::iter(initial_event);
     let update_stream = BroadcastStream::new(hub.subscribe()).filter_map(|item| async move {
@@ -328,6 +332,13 @@ static LIVE_HUB: std::sync::OnceLock<LiveEventHub> = std::sync::OnceLock::new();
 #[cfg(feature = "server")]
 pub fn init_live_hub() -> LiveEventHub {
     LIVE_HUB.get_or_init(LiveEventHub::new).clone()
+}
+
+#[cfg(feature = "server")]
+fn require_live_hub() -> &'static LiveEventHub {
+    LIVE_HUB
+        .get()
+        .expect("LiveEventHub must be initialized before serving SSE.")
 }
 
 #[cfg(all(test, feature = "server"))]
