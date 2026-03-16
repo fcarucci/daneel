@@ -145,6 +145,8 @@ Commands:
   remap-poc-milestones
   reconcile-poc-doc
   find-task --task <Tn.n>
+  list-tasks [--limit <n>]
+  list-open-prs
   list-prs [--state <open|closed|all>]
   create-pr --head <branch> --title <title> [--base <branch>] [--body <text>] [--issue <n>] [--draft]
   update-pr --number <n> [--title <title>] [--body <text>] [--base <branch>] [--state <open|closed>]
@@ -574,6 +576,18 @@ async function projectData() {
             totalCount
             nodes {
               id
+              fieldValues(first:20) {
+                nodes {
+                  ... on ProjectV2ItemFieldSingleSelectValue {
+                    name
+                    field {
+                      ... on ProjectV2SingleSelectField {
+                        name
+                      }
+                    }
+                  }
+                }
+              }
               content {
                 __typename
                 ... on Issue {
@@ -743,6 +757,10 @@ async function listPrs(options) {
       2,
     ),
   );
+}
+
+async function listOpenPrs() {
+  await listPrs({ state: "open" });
 }
 
 async function createPr(options) {
@@ -1292,6 +1310,94 @@ async function report() {
   );
 }
 
+function statusFromItem(item) {
+  const values = item.fieldValues?.nodes || [];
+  const statusValue = values.find(
+    (value) => value?.field?.name === "Status" && value?.name,
+  );
+  return statusValue?.name || "Backlog";
+}
+
+function priorityFromItem(item) {
+  const values = item.fieldValues?.nodes || [];
+  const priorityValue = values.find(
+    (value) => value?.field?.name === "Priority" && value?.name,
+  );
+  return priorityValue?.name || null;
+}
+
+function priorityRank(priority) {
+  if (!priority) return 99;
+  const normalized = priority.toLowerCase();
+  if (normalized.includes("p0") || normalized === "high") return 0;
+  if (normalized.includes("p1") || normalized === "medium") return 1;
+  if (normalized.includes("p2") || normalized === "low") return 2;
+  return 50;
+}
+
+async function listTasks(options) {
+  const data = await projectData();
+  const project = data.user.projectV2;
+  const issues = await allIssues();
+  const limit = Math.max(1, Number(options.limit || 10));
+  const issueByNumber = new Map(
+    issues
+      .filter((issue) => !issue.pull_request)
+      .map((issue) => [issue.number, issue]),
+  );
+
+  const candidates = project.items.nodes
+    .map((item) => {
+      const issue = item.content;
+      if (!issue || issue.__typename !== "Issue") {
+        return null;
+      }
+      const fullIssue = issueByNumber.get(issue.number);
+      const status = statusFromItem(item);
+      const priority = priorityFromItem(item);
+      return {
+        number: issue.number,
+        title: issue.title,
+        state: issue.state,
+        status,
+        priority,
+        url: issueUrl(issue.number),
+        labels: fullIssue?.labels?.map((label) => label.name) || [],
+      };
+    })
+    .filter(Boolean)
+    .filter((issue) => issue.state === "OPEN")
+    .filter((issue) => issue.status !== "In Progress")
+    .filter((issue) => issue.status !== "Done")
+    .filter((issue) => issue.status !== "Ready for Merge");
+
+  const readyCandidates = candidates.filter(
+    (issue) => issue.status === "Ready" || issue.status === "Backlog",
+  );
+
+  const sorted = readyCandidates.sort((a, b) => {
+    const priorityDiff = priorityRank(a.priority) - priorityRank(b.priority);
+    if (priorityDiff !== 0) return priorityDiff;
+    return a.number - b.number;
+  });
+
+  if (sorted.length === 0) {
+    console.log(
+      JSON.stringify(
+        {
+          message: "No Ready/Backlog tasks found that are not in progress.",
+          candidateCount: candidates.length,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  console.log(JSON.stringify(sorted.slice(0, limit), null, 2));
+}
+
 const { command, options } = parseArgs(process.argv.slice(2));
 
 if (!command || command === "help" || command === "--help") {
@@ -1305,6 +1411,8 @@ const commands = {
   "remap-poc-milestones": remapPocMilestones,
   "reconcile-poc-doc": reconcilePocDoc,
   "find-task": () => findTask(options),
+  "list-tasks": () => listTasks(options),
+  "list-open-prs": listOpenPrs,
   "list-prs": () => listPrs(options),
   "create-pr": () => createPr(options),
   "update-pr": () => updatePr(options),

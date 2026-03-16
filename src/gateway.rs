@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #![cfg_attr(not(feature = "server"), allow(dead_code))]
 
 use dioxus::prelude::{ServerFnError, dioxus_fullstack, server};
@@ -11,9 +12,11 @@ mod session_store;
 mod status;
 mod ws;
 
-#[allow(unused_imports)]
-pub(crate) use config::{LoadedGatewayConfig, DEFAULT_GATEWAY_URL, load_gateway_config};
-#[allow(unused_imports)]
+pub(crate) use config::{DEFAULT_GATEWAY_URL, load_gateway_config};
+
+#[cfg(feature = "server")]
+pub(crate) use config::LoadedGatewayConfig;
+#[cfg(feature = "server")]
 pub(crate) use ws::Envelope;
 
 #[cfg(feature = "server")]

@@ -1,6 +1,5 @@
-#![cfg_attr(not(feature = "server"), allow(dead_code))]
-
 // SPDX-License-Identifier: Apache-2.0
+#![cfg_attr(not(feature = "server"), allow(dead_code))]
 
 use serde::{Deserialize, Serialize};
 
