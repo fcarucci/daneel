@@ -106,7 +106,7 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
     let elapsed_ms = use_signal(|| 0_u64);
 
     #[cfg(target_arch = "wasm32")]
-    use_coroutine(|_| {
+    use_coroutine(|_: UnboundedReceiver<()>| {
         let mut elapsed_ms = elapsed_ms;
         async move {
             loop {
