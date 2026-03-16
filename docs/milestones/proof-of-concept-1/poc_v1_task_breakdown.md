@@ -429,6 +429,49 @@ Tests:
 
 ---
 
+## T2.8 Add live backend connection and reconnection state management
+
+Purpose:
+
+- make browser-to-backend and backend-to-gateway connectivity explicit, resilient, and operator-friendly
+
+Output:
+
+- a first-class connection-state model covering browser, backend, and gateway reachability
+- a top-right status pill that can truthfully show `Connected`, `Connecting`, and `Disconnected`
+- frozen views when the backend is disconnected, keeping the last known good UI visible while subtly grayed out
+- background reconnect behavior from browser to backend and from backend to gateway
+
+Required behavior:
+
+- when the web app loses the backend event stream or backend HTTP connectivity, the status pill must show `Disconnected`
+- when disconnected, the current views should remain visible and frozen rather than clearing or thrashing
+- frozen views should be slightly grayed out or otherwise visually subdued without becoming unreadable
+- the browser should keep trying to reconnect to the backend in the background
+- after backend recovery, the backend should continue reconnecting to the gateway until live state is restored
+- once the full path recovers, the UI should return to the normal live-connected state without a full page reload
+
+Delivery rules:
+
+- distinguish browser-to-backend disconnects from backend-to-gateway disconnects
+- do not discard the last known good route data just because the live transport is down
+- keep the frozen state informative and calm rather than alarming by default
+- centralize connection-state logic so routes do not invent their own reconnect behavior
+
+Tests:
+
+- unit test: connection-state resolution maps browser/backend/gateway combinations to the correct operator-facing state
+- unit test: disconnected state preserves last-known-good data while marking the UI frozen
+- unit test: reconnecting state does not incorrectly downgrade healthy cached data to a hard failure state
+- integration test: mock backend disconnect changes the pill to `Disconnected` while the current views remain rendered
+- integration test: reconnect restores the live pill and unfreezes the UI without a reload
+- integration test: backend-up but gateway-down still shows the correct degraded or reconnecting semantics
+- acceptance test (automated): end-to-end test toggles backend availability and asserts pill transitions plus frozen/unfrozen UI behavior
+- acceptance test (automated): end-to-end test validates cached data remains visible while disconnected
+- acceptance test (visual): live screenshot confirms the disconnected frozen state is readable and the reconnect path returns to `Connected`
+
+---
+
 # Phase 3: OpenClaw Adapter Minimum Slice
 
 ## T3.1 Create the adapter trait and OpenClaw adapter module
@@ -860,29 +903,30 @@ Tests:
 10. T2.5
 11. T2.6
 12. T2.7
-13. T3.1
-14. T3.2
-15. T3.3
-16. T3.4
-17. T3.5
-18. T3.6
-19. T3.7
-20. T4.1
-21. T4.2
-22. T4.3
-23. T1.2
-24. T1.3
-25. T5.1
-26. T5.2
-27. T5.3
-28. T5.4
-29. T5.5
-30. T6.1
-31. T6.2
-32. T6.3
-33. T7.1
-34. T7.2
-35. T7.3
+13. T2.8
+14. T3.1
+15. T3.2
+16. T3.3
+17. T3.4
+18. T3.5
+19. T3.6
+20. T3.7
+21. T4.1
+22. T4.2
+23. T4.3
+24. T1.2
+25. T1.3
+26. T5.1
+27. T5.2
+28. T5.3
+29. T5.4
+30. T5.5
+31. T6.1
+32. T6.2
+33. T6.3
+34. T7.1
+35. T7.2
+36. T7.3
 
 ## Smallest Useful Vertical Slice
 
@@ -899,20 +943,21 @@ If we want the absolute minimum path before the full polish pass:
 9. T2.5
 10. T2.6
 11. T2.7
-12. T3.1
-13. T3.2
-14. T3.3
-15. T3.4
-16. T3.5
-17. T3.6
-18. T4.1
-19. T4.3
-20. T5.1
-21. T5.2
-22. T5.3
-23. T5.4
-24. T6.2
-25. T7.3
+12. T2.8
+13. T3.1
+14. T3.2
+15. T3.3
+16. T3.4
+17. T3.5
+18. T3.6
+19. T4.1
+20. T4.3
+21. T5.1
+22. T5.2
+23. T5.3
+24. T5.4
+25. T6.2
+26. T7.3
 
 ## POC Success Demo Script
 
