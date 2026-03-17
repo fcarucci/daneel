@@ -83,6 +83,7 @@ fn handle_gateway_client(stream: TcpStream, payload: &GatewayPayload) -> Result<
             Err(tungstenite::Error::ConnectionClosed) | Err(tungstenite::Error::AlreadyClosed) => {
                 return Ok(());
             }
+            Err(error) if is_client_disconnect(&error) => return Ok(()),
             Err(error) => return Err(format!("read gateway message: {error}")),
         };
 
@@ -107,6 +108,18 @@ fn handle_gateway_client(stream: TcpStream, payload: &GatewayPayload) -> Result<
             .send(Message::Text(response.to_string().into()))
             .map_err(|error| format!("send gateway response: {error}"))?;
     }
+}
+
+fn is_client_disconnect(error: &tungstenite::Error) -> bool {
+    matches!(error, tungstenite::Error::Io(io_error) if matches!(
+        io_error.kind(),
+        std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::UnexpectedEof
+            | std::io::ErrorKind::BrokenPipe
+    )) || error
+        .to_string()
+        .contains("Connection reset without closing handshake")
 }
 
 fn connect_response(request: &Value, payload: &GatewayPayload) -> Value {

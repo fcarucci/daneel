@@ -9,45 +9,65 @@ mod util;
 use std::sync::{Mutex, OnceLock};
 
 pub use app::BrowserTestApp;
+use process::cleanup_stale_dioxus_processes;
 use util::{COMMAND_TIMEOUT, ensure_tool, run_command_success};
 
 static TEST_ENVIRONMENT: OnceLock<()> = OnceLock::new();
-static HEALTHY_APP: OnceLock<Mutex<BrowserTestApp>> = OnceLock::new();
-static DEGRADED_APP: OnceLock<Mutex<BrowserTestApp>> = OnceLock::new();
+static CLEANUP: OnceLock<()> = OnceLock::new();
+static HEALTHY_APP: OnceLock<Mutex<Option<BrowserTestApp>>> = OnceLock::new();
+static DEGRADED_APP: OnceLock<Mutex<Option<BrowserTestApp>>> = OnceLock::new();
 
-pub fn healthy_app() -> &'static Mutex<BrowserTestApp> {
-    init_browser_test_app(
+pub fn with_healthy_app<T>(f: impl FnOnce(&mut BrowserTestApp) -> T) -> T {
+    with_browser_test_app(
         &HEALTHY_APP,
         BrowserTestApp::healthy,
         "start healthy browser test app",
+        f,
     )
 }
 
-pub fn degraded_app() -> &'static Mutex<BrowserTestApp> {
-    init_browser_test_app(
+pub fn with_degraded_app<T>(f: impl FnOnce(&mut BrowserTestApp) -> T) -> T {
+    with_browser_test_app(
         &DEGRADED_APP,
         BrowserTestApp::degraded,
         "start degraded browser test app",
+        f,
     )
 }
 
-fn init_browser_test_app(
-    slot: &'static OnceLock<Mutex<BrowserTestApp>>,
+fn with_browser_test_app<T>(
+    slot: &'static OnceLock<Mutex<Option<BrowserTestApp>>>,
     builder: fn() -> Result<BrowserTestApp, String>,
     context: &str,
-) -> &'static Mutex<BrowserTestApp> {
-    slot.get_or_init(|| {
+    f: impl FnOnce(&mut BrowserTestApp) -> T,
+) -> T {
+    let app = slot.get_or_init(|| {
         prepare_browser_test_environment();
-        Mutex::new(builder().unwrap_or_else(|error| {
+        register_browser_test_cleanup();
+        Mutex::new(Some(builder().unwrap_or_else(|error| {
             panic!("{context} failed: {error}");
-        }))
-    })
+        })))
+    });
+
+    let mut guard = match app.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("recovering poisoned browser test app state after an earlier test failure");
+            poisoned.into_inner()
+        }
+    };
+
+    let app = guard
+        .as_mut()
+        .unwrap_or_else(|| panic!("{context} was already cleaned up"));
+    f(app)
 }
 
 fn prepare_browser_test_environment() {
     TEST_ENVIRONMENT.get_or_init(|| {
         ensure_tool("dx");
         ensure_tool("npm");
+        cleanup_stale_dioxus_processes();
         run_command_success(
             std::process::Command::new("npm")
                 .arg("run")
@@ -56,4 +76,29 @@ fn prepare_browser_test_environment() {
             COMMAND_TIMEOUT,
         );
     });
+}
+
+fn register_browser_test_cleanup() {
+    CLEANUP.get_or_init(|| unsafe {
+        libc::atexit(cleanup_browser_test_apps);
+    });
+}
+
+extern "C" fn cleanup_browser_test_apps() {
+    cleanup_browser_test_slot(&HEALTHY_APP);
+    cleanup_browser_test_slot(&DEGRADED_APP);
+}
+
+fn cleanup_browser_test_slot(slot: &'static OnceLock<Mutex<Option<BrowserTestApp>>>) {
+    if let Some(app) = slot.get() {
+        match app.lock() {
+            Ok(mut guard) => {
+                *guard = None;
+            }
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = None;
+            }
+        }
+    }
 }

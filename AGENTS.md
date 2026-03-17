@@ -596,12 +596,15 @@ cargo test --test e2e_mock_gateway
 dx serve --web --fullstack --addr 127.0.0.1 --port 4127 --open false
 ```
 
+If any test is failing or hanging, stop and repair the test or the implementation before committing. Do not commit code while knowingly leaving the suite broken.
+
 If the change affects UI presentation, do a manual live-data visual pass after the automated checks by capturing and inspecting screenshots yourself.
 
 Expectations before commit:
 
 - code is formatted
 - warnings are removed, not ignored
+- all relevant tests pass before commit; repair broken tests instead of working around them
 - the mock-gateway integration test passes
 - the app is verified to start successfully with `dx serve --web --fullstack`
 - UI changes get a manual screenshot-based visual check against the live app before commit

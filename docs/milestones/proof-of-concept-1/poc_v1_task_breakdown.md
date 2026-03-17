@@ -472,6 +472,46 @@ Tests:
 
 ---
 
+## T2.9 Introduce the shared `AppClient` boundary
+
+Purpose:
+
+- introduce one shared UI-facing `AppClient` boundary so the current web app stops depending directly on server-function details and the backend contract is prepared cleanly for future native clients
+
+Output:
+
+- one shared `AppClient` interface for request-response reads
+- stable explicit endpoint paths for the current Dioxus server functions
+- a clear separation between UI-facing client code, server-function transport, and backend app-service logic
+
+Initial scope:
+
+- cover `get_gateway_status()`
+- cover `get_agent_overview()` only if it follows the same shape cleanly
+- keep live transport out of scope except where stable endpoint naming or client setup affects future work
+
+Delivery rules:
+
+- keep the web app calling through Dioxus server functions underneath `AppClient`
+- keep UI components unaware of gateway protocol and transport details
+- keep `AppClient` small and focused on the current read paths
+- do not collapse `AppClient` into the deeper `GatewayAdapter`; they solve different layers of the architecture
+- prefer explicit stable endpoint annotations for the relevant server functions so future native clients are not coupled to unstable generated paths
+
+Tests:
+
+- unit test: the web `AppClient` delegates to the existing server-function-backed path for gateway status
+- unit test: shared UI-facing code can depend on `AppClient` without importing transport-specific or OpenClaw-specific types
+- unit test: error mapping at the `AppClient` boundary preserves the current operator-facing degraded semantics
+- compile test: UI-facing code depends only on shared models and the `AppClient` interface, not on OpenClaw-specific transport code
+- integration test: existing server functions still return the same typed payloads for the web `AppClient`
+- integration test: dashboard route still renders the expected gateway status states through the web `AppClient`
+- integration test: agents route still renders the expected overview state if `get_agent_overview()` is included in this task
+- integration test: the relevant server functions expose explicit stable endpoint paths suitable for both web and desktop callers
+- live verification: confirm the running web app still loads dashboard and agents through the web `AppClient`, and verify the stable endpoint design is ready for future native-client use without changing the UI-facing boundary
+
+---
+
 # Phase 3: OpenClaw Adapter Minimum Slice
 
 ## T3.1 Create the adapter trait and OpenClaw adapter module
