@@ -5,7 +5,8 @@
     "dev": "bash scripts/dev.sh 4127 127.0.0.1",
     "start": "bash scripts/dev.sh 4127 127.0.0.1",
     "github:admin": "node scripts/github-admin.mjs",
-    "verify:route": "node scripts/verify-route.mjs"
+    "verify:route": "node scripts/verify-route.mjs",
+    "verify:live": "node scripts/verify-live.mjs"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.2.1",

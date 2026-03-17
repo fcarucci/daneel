@@ -29,6 +29,7 @@ npm-debug.log*
 
 # Test artifacts and logs
 *.log
+/videos/
 
 # Generated Tailwind output
 /assets/main.css
