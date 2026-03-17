@@ -127,8 +127,8 @@ fn disabled_heartbeat_agent_renders_gray_heart() {
         &["HTTP/1.1 200 OK", "Graph View", "Agent tiles"],
         &["Internal Server Error"],
     );
-    // Planner agent should have gray heart (disabled heartbeat)
     assert!(agents_response.contains("planner"));
-    assert!(!agents_response.contains("text-rose-400")); // Active heart class
-    assert!(agents_response.contains("text-slate-600")); // Inactive heart class
+    assert!(agents_response.contains("Heartbeat disabled"));
+    assert!(agents_response.contains("text-slate-500"));
+    assert!(!agents_response.contains("text-rose-400"));
 }

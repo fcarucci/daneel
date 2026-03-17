@@ -146,6 +146,8 @@ Commands:
   reconcile-poc-doc
   find-task --task <Tn.n>
   list-tasks [--limit <n>]
+  list-issue-comments --issue <n>
+  delete-issue-comment --comment-id <n>
   list-open-prs
   list-prs [--state <open|closed|all>]
   create-pr --head <branch> --title <title> [--base <branch>] [--body <text>] [--issue <n>] [--draft]
@@ -761,6 +763,44 @@ async function listPrs(options) {
 
 async function listOpenPrs() {
   await listPrs({ state: "open" });
+}
+
+async function listIssueComments(options) {
+  const { owner, repo } = repoParts();
+  const issueNumber = Number(options.issue);
+  if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+    throw new Error("list-issue-comments requires --issue <n>.");
+  }
+
+  const comments = await rest(
+    "GET",
+    `/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100`,
+  );
+
+  console.log(
+    JSON.stringify(
+      comments.map((comment) => ({
+        id: comment.id,
+        user: comment.user?.login,
+        created_at: comment.created_at,
+        body: comment.body,
+        url: comment.html_url,
+      })),
+      null,
+      2,
+    ),
+  );
+}
+
+async function deleteIssueComment(options) {
+  const { owner, repo } = repoParts();
+  const commentId = Number(options["comment-id"] || options.commentId);
+  if (!Number.isInteger(commentId) || commentId <= 0) {
+    throw new Error("delete-issue-comment requires --comment-id <n>.");
+  }
+
+  await rest("DELETE", `/repos/${owner}/${repo}/issues/comments/${commentId}`);
+  console.log(JSON.stringify({ deleted: true, commentId }, null, 2));
 }
 
 async function createPr(options) {
@@ -1412,6 +1452,8 @@ const commands = {
   "reconcile-poc-doc": reconcilePocDoc,
   "find-task": () => findTask(options),
   "list-tasks": () => listTasks(options),
+  "list-issue-comments": () => listIssueComments(options),
+  "delete-issue-comment": () => deleteIssueComment(options),
   "list-open-prs": listOpenPrs,
   "list-prs": () => listPrs(options),
   "create-pr": () => createPr(options),

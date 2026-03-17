@@ -13,7 +13,7 @@ const STATUS_DOT_ACTIVE_CLASS: &str =
 const STATUS_DOT_IDLE_CLASS: &str = "h-2.5 w-2.5 rounded-full bg-slate-500";
 const HEART_ACTIVE_CLASS: &str =
     "shrink-0 text-rose-400 drop-shadow-[0_0_8px_rgba(251,113,133,0.55)]";
-const HEART_IDLE_CLASS: &str = "shrink-0 text-slate-600";
+const HEART_IDLE_CLASS: &str = "shrink-0 text-slate-500";
 const RECENT_BADGE_ACTIVE_CLASS: &str = "inline-flex rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-emerald-200";
 const RECENT_BADGE_IDLE_CLASS: &str = "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-300";
 
@@ -128,11 +128,9 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
     } else {
         STATUS_DOT_IDLE_CLASS
     };
-    let heart_class = if heartbeat_is_active(agent.heartbeat_enabled, &agent.heartbeat_schedule) {
-        HEART_ACTIVE_CLASS
-    } else {
-        HEART_IDLE_CLASS
-    };
+    let heartbeat_active =
+        heartbeat_is_active(agent.heartbeat_enabled, &agent.heartbeat_schedule);
+    let heart_class = heartbeat_icon_class(heartbeat_active);
     let recent_activity_badge = displayed_age_ms
         .map(format_age_badge)
         .unwrap_or_else(|| "No activity".to_string());
@@ -159,7 +157,7 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
                 agent.active_session_count,
                 agent.latest_session_key.as_deref(),
                 heart_class,
-                agent.heartbeat_enabled,
+                heartbeat_active,
             )}
         }
     }
@@ -167,6 +165,14 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
 
 fn is_agent_active(displayed_age_ms: Option<u64>) -> bool {
     displayed_age_ms.is_some_and(|age| age < ACTIVE_WINDOW_MS)
+}
+
+fn heartbeat_icon_class(heartbeat_active: bool) -> &'static str {
+    if heartbeat_active {
+        HEART_ACTIVE_CLASS
+    } else {
+        HEART_IDLE_CLASS
+    }
 }
 
 fn agent_header(
@@ -198,7 +204,7 @@ fn agent_sessions(
     active_session_count: u64,
     latest_session_key: Option<&str>,
     heart_class: &'static str,
-    heartbeat_enabled: bool,
+    heartbeat_active: bool,
 ) -> Element {
     rsx! {
         div { class: "mt-4 rounded-[1.4rem] border border-white/6 bg-white/[0.03] px-4 py-4",
@@ -218,8 +224,8 @@ fn agent_sessions(
                     width: "16",
                     height: "16",
                     fill: "currentColor",
-                    "aria-label": if heartbeat_enabled { "Heartbeat enabled" } else { "Heartbeat disabled" },
-                    path { d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 极 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" }
+                    "aria-label": if heartbeat_active { "Heartbeat enabled" } else { "Heartbeat disabled" },
+                    path { d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5C2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" }
                 }
             }
         }
@@ -229,7 +235,22 @@ fn agent_sessions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::agents::AgentOverviewItem;
     use crate::utils::time::{format_age_badge, heartbeat_is_active};
+
+    #[component]
+    fn AgentCardHarness(agent: AgentOverviewItem) -> Element {
+        rsx! { AgentCard { agent } }
+    }
+
+    fn render_agent_card(agent: AgentOverviewItem) -> String {
+        let mut dom = VirtualDom::new_with_props(
+            AgentCardHarness,
+            AgentCardHarnessProps { agent },
+        );
+        dom.rebuild_in_place();
+        dioxus_ssr::render(&dom)
+    }
 
     #[test]
     fn is_agent_active_below_threshold() {
@@ -273,7 +294,6 @@ mod tests {
         assert_eq!(STATUS_DOT_ACTIVE_CLASS, STATUS_DOT_ACTIVE_CLASS);
         assert_eq!(STATUS_DOT_IDLE_CLASS, STATUS_DOT_IDLE_CLASS);
         assert_eq!(HEART_ACTIVE_CLASS, HEART_ACTIVE_CLASS);
-        assert_eq!(HEART_IDLE_CLASS, HEART_IDLE_CLASS);
         assert_eq!(RECENT_BADGE_ACTIVE_CLASS, RECENT_BADGE_ACTIVE_CLASS);
         assert_eq!(RECENT_BADGE_IDLE_CLASS, RECENT_BADGE_IDLE_CLASS);
     }
@@ -301,5 +321,48 @@ mod tests {
         assert!(!heartbeat_is_active(true, "none"));
         assert!(!heartbeat_is_active(true, "0"));
         assert!(!heartbeat_is_active(true, "disabled"));
+    }
+
+    #[test]
+    fn disabled_heartbeat_uses_idle_heart_class() {
+        assert_eq!(heartbeat_icon_class(false), HEART_IDLE_CLASS);
+        assert_eq!(heartbeat_icon_class(true), HEART_ACTIVE_CLASS);
+    }
+
+    #[test]
+    fn disabled_heartbeat_card_renders_gray_heart() {
+        let html = render_agent_card(AgentOverviewItem {
+            id: "planner".to_string(),
+            name: "planner".to_string(),
+            is_default: false,
+            heartbeat_enabled: false,
+            heartbeat_schedule: "Disabled".to_string(),
+            heartbeat_model: None,
+            active_session_count: 0,
+            latest_session_key: Some("agent:planner:cron:gamma".to_string()),
+            latest_activity_age_ms: Some(8_400_000),
+        });
+
+        assert!(html.contains("aria-label=\"Heartbeat disabled\""));
+        assert!(html.contains("text-slate-500"));
+        assert!(!html.contains("text-rose-400"));
+    }
+
+    #[test]
+    fn active_heartbeat_card_renders_heart() {
+        let html = render_agent_card(AgentOverviewItem {
+            id: "calendar".to_string(),
+            name: "calendar".to_string(),
+            is_default: false,
+            heartbeat_enabled: true,
+            heartbeat_schedule: "*/5 * * * *".to_string(),
+            heartbeat_model: None,
+            active_session_count: 2,
+            latest_session_key: Some("agent:calendar:cron:beta".to_string()),
+            latest_activity_age_ms: Some(300_000),
+        });
+
+        assert!(html.contains("aria-label=\"Heartbeat enabled\""));
+        assert!(html.contains("text-rose-400"));
     }
 }
