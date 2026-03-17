@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+mod app_state;
 mod components;
 mod gateway;
 mod live;
@@ -15,6 +16,7 @@ use dioxus::prelude::*;
 #[cfg(feature = "server")]
 fn main() {
     dioxus_server::serve(|| async move {
+        let _ = app_state::warm_server_app_state();
         let hub = live::init_live_hub();
         tokio::spawn(live::run_gateway_event_bridge(hub));
 

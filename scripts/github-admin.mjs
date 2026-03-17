@@ -150,6 +150,10 @@ Commands:
   delete-issue-comment --comment-id <n>
   list-open-prs
   list-prs [--state <open|closed|all>]
+  comment-pr --number <n> --body <text>
+  ensure-release --tag <tag> [--name <title>] [--body <text>] [--draft] [--prerelease]
+  upload-release-asset --tag <tag> --file <path> [--label <text>]
+  comment-pr-verification --number <n> --artifact-url <url> [--route <route>] [--latest-session-count <n>] [--connected-ribbon <true|false>] [--screenshot <path>] [--dom <path>] [--video <path>]
   list-pr-review-threads --number <n>
   resolve-pr-review-thread --thread-id <id>
   merge-pr --number <n> [--method <merge|squash|rebase>] [--title <title>] [--message <text>]
@@ -310,6 +314,88 @@ async function allIssues(state = "all") {
 async function allPulls(state = "open") {
   const { owner, repo } = repoParts();
   return rest("GET", `/repos/${owner}/${repo}/pulls?state=${state}&per_page=100`);
+}
+
+async function allReleases() {
+  const { owner, repo } = repoParts();
+  return rest("GET", `/repos/${owner}/${repo}/releases?per_page=100`);
+}
+
+async function getReleaseByTag(tag) {
+  const { owner, repo } = repoParts();
+  try {
+    return await rest("GET", `/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`);
+  } catch (error) {
+    if (String(error.message).includes("404")) {
+      const releases = await allReleases();
+      return releases.find((release) => release.tag_name === tag) || null;
+    }
+    throw error;
+  }
+}
+
+async function createRelease({ tag, name, body, draft, prerelease }) {
+  const { owner, repo } = repoParts();
+  return rest("POST", `/repos/${owner}/${repo}/releases`, {
+    tag_name: tag,
+    name: name || tag,
+    body: body || "",
+    draft: Boolean(draft),
+    prerelease: Boolean(prerelease),
+  });
+}
+
+async function deleteReleaseAsset(assetId) {
+  const { owner, repo } = repoParts();
+  return rest("DELETE", `/repos/${owner}/${repo}/releases/assets/${assetId}`);
+}
+
+function contentTypeForAsset(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  switch (extension) {
+    case ".mp4":
+      return "video/mp4";
+    case ".webm":
+      return "video/webm";
+    case ".png":
+      return "image/png";
+    case ".html":
+      return "text/html";
+    case ".json":
+      return "application/json";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+async function uploadReleaseAssetBinary(uploadUrl, filePath, label) {
+  const fileName = path.basename(filePath);
+  const fileBuffer = await readFile(filePath);
+  const target = new URL(uploadUrl.replace(/\{\?name,label\}$/, ""));
+  target.searchParams.set("name", fileName);
+  if (label) {
+    target.searchParams.set("label", label);
+  }
+
+  const response = await fetch(target, {
+    method: "POST",
+    headers: {
+      Authorization: `token ${token()}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "daneel-github-admin",
+      "Content-Type": contentTypeForAsset(filePath),
+      "Content-Length": String(fileBuffer.byteLength),
+    },
+    body: fileBuffer,
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Asset upload failed: ${response.status} ${await response.text()}`
+    );
+  }
+
+  return response.json();
 }
 
 async function getIssue(issueNumber) {
@@ -804,6 +890,175 @@ async function deleteIssueComment(options) {
 
   await rest("DELETE", `/repos/${owner}/${repo}/issues/comments/${commentId}`);
   console.log(JSON.stringify({ deleted: true, commentId }, null, 2));
+}
+
+async function commentPr(options) {
+  const { owner, repo } = repoParts();
+  const number = Number(options.number);
+  const body = options.body;
+
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("comment-pr requires --number <n>.");
+  }
+  if (!body || typeof body !== "string") {
+    throw new Error("comment-pr requires --body <text>.");
+  }
+
+  const comment = await rest(
+    "POST",
+    `/repos/${owner}/${repo}/issues/${number}/comments`,
+    { body },
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        id: comment.id,
+        url: comment.html_url,
+        created_at: comment.created_at,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function ensureRelease(options) {
+  const tag = options.tag;
+  if (!tag || typeof tag !== "string") {
+    throw new Error("ensure-release requires --tag <tag>.");
+  }
+
+  const existing = await getReleaseByTag(tag);
+  if (existing) {
+    console.log(
+      JSON.stringify(
+        {
+          id: existing.id,
+          tag: existing.tag_name,
+          name: existing.name,
+          draft: existing.draft,
+          prerelease: existing.prerelease,
+          url: existing.html_url,
+          upload_url: existing.upload_url,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  const created = await createRelease({
+    tag,
+    name: options.name,
+    body: options.body,
+    draft: options.draft ?? true,
+    prerelease: options.prerelease ?? true,
+  });
+
+  console.log(
+    JSON.stringify(
+      {
+        id: created.id,
+        tag: created.tag_name,
+        name: created.name,
+        draft: created.draft,
+        prerelease: created.prerelease,
+        url: created.html_url,
+        upload_url: created.upload_url,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function uploadReleaseAsset(options) {
+  const tag = options.tag;
+  const filePath = options.file;
+  if (!tag || typeof tag !== "string") {
+    throw new Error("upload-release-asset requires --tag <tag>.");
+  }
+  if (!filePath || typeof filePath !== "string") {
+    throw new Error("upload-release-asset requires --file <path>.");
+  }
+
+  const release = await getReleaseByTag(tag);
+  if (!release) {
+    throw new Error(`Release with tag '${tag}' does not exist. Run ensure-release first.`);
+  }
+
+  const existingAsset = (release.assets || []).find(
+    (asset) => asset.name === path.basename(filePath),
+  );
+  if (existingAsset) {
+    await deleteReleaseAsset(existingAsset.id);
+  }
+
+  const uploaded = await uploadReleaseAssetBinary(release.upload_url, filePath, options.label);
+  console.log(
+    JSON.stringify(
+      {
+        release: {
+          id: release.id,
+          tag: release.tag_name,
+          url: release.html_url,
+        },
+        asset: {
+          id: uploaded.id,
+          name: uploaded.name,
+          label: uploaded.label,
+          size: uploaded.size,
+          state: uploaded.state,
+          download_url: uploaded.browser_download_url,
+          url: uploaded.url,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function commentPrVerification(options) {
+  const number = Number(options.number);
+  const artifactUrl = options["artifact-url"] || options.artifactUrl;
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("comment-pr-verification requires --number <n>.");
+  }
+  if (!artifactUrl || typeof artifactUrl !== "string") {
+    throw new Error("comment-pr-verification requires --artifact-url <url>.");
+  }
+
+  const route = options.route || "/agents";
+  const lines = [
+    `Live ${route} verification passed.`,
+    "",
+    `- Artifact: ${artifactUrl}`,
+  ];
+
+  if (options["latest-session-count"] || options.latestSessionCount) {
+    lines.push(
+      `- Latest session cards detected: ${options["latest-session-count"] || options.latestSessionCount}`,
+    );
+  }
+  if (options["connected-ribbon"] || options.connectedRibbon) {
+    lines.push(
+      `- Connected ribbon present: ${options["connected-ribbon"] || options.connectedRibbon}`,
+    );
+  }
+  if (options.screenshot) {
+    lines.push(`- Screenshot: ${options.screenshot}`);
+  }
+  if (options.dom) {
+    lines.push(`- DOM snapshot: ${options.dom}`);
+  }
+  if (options.video) {
+    lines.push(`- Local video path: ${options.video}`);
+  }
+
+  await commentPr({ number, body: lines.join("\n") });
 }
 
 async function mergePr(options) {
@@ -1597,6 +1852,10 @@ const commands = {
   "delete-issue-comment": () => deleteIssueComment(options),
   "list-open-prs": listOpenPrs,
   "list-prs": () => listPrs(options),
+  "comment-pr": () => commentPr(options),
+  "ensure-release": () => ensureRelease(options),
+  "upload-release-asset": () => uploadReleaseAsset(options),
+  "comment-pr-verification": () => commentPrVerification(options),
   "list-pr-review-threads": () => listPrReviewThreads(options),
   "resolve-pr-review-thread": () => resolvePrReviewThread(options),
   "merge-pr": () => mergePr(options),

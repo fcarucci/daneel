@@ -4,6 +4,8 @@ use std::path::Path;
 
 use serde_json::Value;
 
+#[cfg(feature = "server")]
+use crate::app_state::server_gateway_config;
 use crate::models::agents::{AgentOverviewItem, AgentOverviewSnapshot};
 
 use super::parse::{require_array, require_object};
@@ -18,7 +20,7 @@ const ACTIVE_SESSION_WINDOW_MINUTES: u64 = 10;
 
 #[cfg(feature = "server")]
 pub(crate) async fn load_agent_overview() -> Result<AgentOverviewSnapshot, String> {
-    let config = super::config::load_gateway_config()?;
+    let config = server_gateway_config()?;
     fetch_agent_overview_via_websocket(&config).await
 }
 
