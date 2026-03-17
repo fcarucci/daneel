@@ -13,8 +13,8 @@ use std::net::SocketAddr;
 
 pub struct BrowserTestApp {
     _fixture: TestFixture,
-    _gateway: Option<MockGateway>,
     process: RunningProcess,
+    _gateway: Option<MockGateway>,
     port: u16,
 }
 
