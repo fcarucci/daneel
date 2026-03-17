@@ -150,6 +150,7 @@ Commands:
   delete-issue-comment --comment-id <n>
   list-open-prs
   list-prs [--state <open|closed|all>]
+  merge-pr --number <n> [--method <merge|squash|rebase>] [--title <title>] [--message <text>]
   create-pr --head <branch> --title <title> [--base <branch>] [--body <text>] [--issue <n>] [--draft]
   update-pr --number <n> [--title <title>] [--body <text>] [--base <branch>] [--state <open|closed>]
   link-pr-task --pr <n> --issue <n> [--close]
@@ -801,6 +802,52 @@ async function deleteIssueComment(options) {
 
   await rest("DELETE", `/repos/${owner}/${repo}/issues/comments/${commentId}`);
   console.log(JSON.stringify({ deleted: true, commentId }, null, 2));
+}
+
+async function mergePr(options) {
+  const { owner, repo } = repoParts();
+  const number = Number(options.number);
+  const method = options.method || "merge";
+
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("merge-pr requires --number <n>.");
+  }
+  if (!["merge", "squash", "rebase"].includes(method)) {
+    throw new Error("merge-pr --method must be one of: merge, squash, rebase.");
+  }
+
+  const pull = await getPullRequest(number);
+  const payload = {
+    merge_method: method,
+  };
+
+  if (options.title) {
+    payload.commit_title = options.title;
+  }
+  if (options.message) {
+    payload.commit_message = options.message;
+  }
+  if (pull.head?.sha) {
+    payload.sha = pull.head.sha;
+  }
+
+  const result = await rest("PUT", `/repos/${owner}/${repo}/pulls/${number}/merge`, payload);
+  console.log(
+    JSON.stringify(
+      {
+        merged: result.merged,
+        message: result.message,
+        sha: result.sha,
+        pullRequest: {
+          number,
+          url: pullUrl(number),
+        },
+        method,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 async function createPr(options) {
@@ -1456,6 +1503,7 @@ const commands = {
   "delete-issue-comment": () => deleteIssueComment(options),
   "list-open-prs": listOpenPrs,
   "list-prs": () => listPrs(options),
+  "merge-pr": () => mergePr(options),
   "create-pr": () => createPr(options),
   "update-pr": () => updatePr(options),
   "link-pr-task": () => linkPrTask(options),
