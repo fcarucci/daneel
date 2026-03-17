@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
+// These types define the graph snapshot contract shared between the WASM client and server.
+// They are intentionally unused until the graph server function and rendering layer are wired up.
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
