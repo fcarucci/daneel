@@ -316,13 +316,19 @@ async function allPulls(state = "open") {
   return rest("GET", `/repos/${owner}/${repo}/pulls?state=${state}&per_page=100`);
 }
 
+async function allReleases() {
+  const { owner, repo } = repoParts();
+  return rest("GET", `/repos/${owner}/${repo}/releases?per_page=100`);
+}
+
 async function getReleaseByTag(tag) {
   const { owner, repo } = repoParts();
   try {
     return await rest("GET", `/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`);
   } catch (error) {
     if (String(error.message).includes("404")) {
-      return null;
+      const releases = await allReleases();
+      return releases.find((release) => release.tag_name === tag) || null;
     }
     throw error;
   }
@@ -365,7 +371,7 @@ function contentTypeForAsset(filePath) {
 async function uploadReleaseAssetBinary(uploadUrl, filePath, label) {
   const fileName = path.basename(filePath);
   const fileBuffer = await readFile(filePath);
-  const target = new URL(uploadUrl);
+  const target = new URL(uploadUrl.replace(/\{\?name,label\}$/, ""));
   target.searchParams.set("name", fileName);
   if (label) {
     target.searchParams.set("label", label);
