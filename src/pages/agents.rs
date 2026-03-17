@@ -11,9 +11,9 @@ const AGENT_TILE_IDLE_CLASS: &str = "group relative overflow-hidden rounded-[1.9
 const STATUS_DOT_ACTIVE_CLASS: &str =
     "h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.95)]";
 const STATUS_DOT_IDLE_CLASS: &str = "h-2.5 w-2.5 rounded-full bg-slate-500";
-const HEART_ACTIVE_CLASS: &str =
+const HEART_ENABLED_CLASS: &str =
     "shrink-0 text-rose-400 drop-shadow-[0_0_8px_rgba(251,113,133,0.55)]";
-const HEART_IDLE_CLASS: &str = "shrink-0 text-slate-500";
+const HEART_DISABLED_CLASS: &str = "shrink-0 text-slate-500";
 const RECENT_BADGE_ACTIVE_CLASS: &str = "inline-flex rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-emerald-200";
 const RECENT_BADGE_IDLE_CLASS: &str = "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-300";
 
@@ -128,9 +128,9 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
     } else {
         STATUS_DOT_IDLE_CLASS
     };
-    let heartbeat_active =
+    let heartbeat_enabled =
         heartbeat_is_active(agent.heartbeat_enabled, &agent.heartbeat_schedule);
-    let heart_class = heartbeat_icon_class(heartbeat_active);
+    let heart_class = heartbeat_icon_class(heartbeat_enabled);
     let recent_activity_badge = displayed_age_ms
         .map(format_age_badge)
         .unwrap_or_else(|| "No activity".to_string());
@@ -157,7 +157,7 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
                 agent.active_session_count,
                 agent.latest_session_key.as_deref(),
                 heart_class,
-                heartbeat_active,
+                heartbeat_enabled,
             )}
         }
     }
@@ -167,11 +167,11 @@ fn is_agent_active(displayed_age_ms: Option<u64>) -> bool {
     displayed_age_ms.is_some_and(|age| age < ACTIVE_WINDOW_MS)
 }
 
-fn heartbeat_icon_class(heartbeat_active: bool) -> &'static str {
-    if heartbeat_active {
-        HEART_ACTIVE_CLASS
+fn heartbeat_icon_class(heartbeat_enabled: bool) -> &'static str {
+    if heartbeat_enabled {
+        HEART_ENABLED_CLASS
     } else {
-        HEART_IDLE_CLASS
+        HEART_DISABLED_CLASS
     }
 }
 
@@ -204,7 +204,7 @@ fn agent_sessions(
     active_session_count: u64,
     latest_session_key: Option<&str>,
     heart_class: &'static str,
-    heartbeat_active: bool,
+    heartbeat_enabled: bool,
 ) -> Element {
     rsx! {
         div { class: "mt-4 rounded-[1.4rem] border border-white/6 bg-white/[0.03] px-4 py-4",
@@ -224,7 +224,7 @@ fn agent_sessions(
                     width: "16",
                     height: "16",
                     fill: "currentColor",
-                    "aria-label": if heartbeat_active { "Heartbeat enabled" } else { "Heartbeat disabled" },
+                    "aria-label": if heartbeat_enabled { "Heartbeat enabled" } else { "Heartbeat disabled" },
                     path { d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5C2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" }
                 }
             }
@@ -293,7 +293,7 @@ mod tests {
         assert_eq!(AGENT_TILE_IDLE_CLASS, AGENT_TILE_IDLE_CLASS);
         assert_eq!(STATUS_DOT_ACTIVE_CLASS, STATUS_DOT_ACTIVE_CLASS);
         assert_eq!(STATUS_DOT_IDLE_CLASS, STATUS_DOT_IDLE_CLASS);
-        assert_eq!(HEART_ACTIVE_CLASS, HEART_ACTIVE_CLASS);
+        assert_eq!(HEART_ENABLED_CLASS, HEART_ENABLED_CLASS);
         assert_eq!(RECENT_BADGE_ACTIVE_CLASS, RECENT_BADGE_ACTIVE_CLASS);
         assert_eq!(RECENT_BADGE_IDLE_CLASS, RECENT_BADGE_IDLE_CLASS);
     }
@@ -324,9 +324,9 @@ mod tests {
     }
 
     #[test]
-    fn disabled_heartbeat_uses_idle_heart_class() {
-        assert_eq!(heartbeat_icon_class(false), HEART_IDLE_CLASS);
-        assert_eq!(heartbeat_icon_class(true), HEART_ACTIVE_CLASS);
+    fn disabled_heartbeat_uses_disabled_heart_class() {
+        assert_eq!(heartbeat_icon_class(false), HEART_DISABLED_CLASS);
+        assert_eq!(heartbeat_icon_class(true), HEART_ENABLED_CLASS);
     }
 
     #[test]

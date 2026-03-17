@@ -150,6 +150,7 @@ Commands:
   delete-issue-comment --comment-id <n>
   list-open-prs
   list-prs [--state <open|closed|all>]
+  list-pr-review-threads --number <n>
   merge-pr --number <n> [--method <merge|squash|rebase>] [--title <title>] [--message <text>]
   create-pr --head <branch> --title <title> [--base <branch>] [--body <text>] [--issue <n>] [--draft]
   update-pr --number <n> [--title <title>] [--body <text>] [--base <branch>] [--state <open|closed>]
@@ -850,6 +851,72 @@ async function mergePr(options) {
   );
 }
 
+async function listPrReviewThreads(options) {
+  const number = Number(options.number);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("list-pr-review-threads requires --number <n>.");
+  }
+
+  const { owner, repo } = repoParts();
+  const data = await graphql(
+    `
+    query($owner:String!, $repo:String!, $number:Int!) {
+      repository(owner:$owner, name:$repo) {
+        pullRequest(number:$number) {
+          number
+          title
+          reviewThreads(first:100) {
+            nodes {
+              id
+              isResolved
+              isOutdated
+              path
+              line
+              comments(first:20) {
+                nodes {
+                  id
+                  author { login }
+                  body
+                  createdAt
+                  url
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    `,
+    { owner, repo, number },
+  );
+
+  const pr = data.repository.pullRequest;
+  console.log(
+    JSON.stringify(
+      {
+        number: pr.number,
+        title: pr.title,
+        threads: pr.reviewThreads.nodes.map((thread) => ({
+          id: thread.id,
+          isResolved: thread.isResolved,
+          isOutdated: thread.isOutdated,
+          path: thread.path,
+          line: thread.line,
+          comments: thread.comments.nodes.map((comment) => ({
+            id: comment.id,
+            author: comment.author?.login,
+            body: comment.body,
+            createdAt: comment.createdAt,
+            url: comment.url,
+          })),
+        })),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 async function createPr(options) {
   const { owner, repo } = repoParts();
   const head = options.head;
@@ -1503,6 +1570,7 @@ const commands = {
   "delete-issue-comment": () => deleteIssueComment(options),
   "list-open-prs": listOpenPrs,
   "list-prs": () => listPrs(options),
+  "list-pr-review-threads": () => listPrReviewThreads(options),
   "merge-pr": () => mergePr(options),
   "create-pr": () => createPr(options),
   "update-pr": () => updatePr(options),
