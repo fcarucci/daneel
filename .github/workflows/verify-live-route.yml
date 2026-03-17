@@ -1,0 +1,172 @@
+# SPDX-License-Identifier: Apache-2.0
+
+name: Verify Live Route
+
+on:
+  workflow_dispatch:
+    inputs:
+      route:
+        description: Route to verify.
+        required: true
+        default: /agents
+        type: string
+      port:
+        description: Local Daneel port on the self-hosted runner.
+        required: true
+        default: "4127"
+        type: string
+      title:
+        description: Expected document title.
+        required: true
+        default: Daneel
+        type: string
+      wait_text_1:
+        description: First required text fragment.
+        required: true
+        default: Graph View
+        type: string
+      wait_text_2:
+        description: Second required text fragment.
+        required: false
+        default: Agent tiles
+        type: string
+      forbid_text_1:
+        description: First forbidden text fragment.
+        required: false
+        default: Loading agents
+        type: string
+      forbid_text_2:
+        description: Second forbidden text fragment.
+        required: false
+        default: Gateway lookup failed
+        type: string
+      min_latest_session_count:
+        description: Minimum number of Latest session entries required.
+        required: true
+        default: "1"
+        type: string
+
+jobs:
+  verify-live:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    env:
+      CARGO_TARGET_DIR: /root/.cargo/daneel-target
+      VERIFY_PORT: ${{ inputs.port }}
+      VERIFY_ROUTE: ${{ inputs.route }}
+      VERIFY_URL: http://127.0.0.1:${{ inputs.port }}${{ inputs.route }}
+      VERIFY_ARTIFACT_DIR: artifacts/verify-live
+      VERIFY_VIDEO_BASENAME: verification.mp4
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate local prerequisites
+        run: |
+          set -euo pipefail
+          command -v cargo
+          command -v dx
+          command -v curl
+
+      - name: Ensure ffmpeg is available
+        run: |
+          set -euo pipefail
+          if command -v ffmpeg >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          else
+            apt-get update
+            apt-get install -y ffmpeg
+          fi
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Ensure Playwright browser is installed
+        run: npx playwright install chromium
+
+      - name: Start Daneel dev server
+        run: |
+          set -euo pipefail
+          mkdir -p "$VERIFY_ARTIFACT_DIR"
+          npm start >"$VERIFY_ARTIFACT_DIR/dev-server.log" 2>&1 &
+          echo $! >"$VERIFY_ARTIFACT_DIR/dev-server.pid"
+
+      - name: Wait for Daneel to become reachable
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 120); do
+            if curl -fsS "http://127.0.0.1:${VERIFY_PORT}" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Timed out waiting for ${VERIFY_URL}" >&2
+          exit 1
+
+      - name: Verify live route
+        run: |
+          set -euo pipefail
+          mkdir -p "$VERIFY_ARTIFACT_DIR"
+
+          args=(
+            --url "$VERIFY_URL"
+            --title "${{ inputs.title }}"
+            --screenshot "$VERIFY_ARTIFACT_DIR/live-route.png"
+            --dom "$VERIFY_ARTIFACT_DIR/live-route.html"
+            --video "$VERIFY_VIDEO_BASENAME"
+            --wait-text "${{ inputs.wait_text_1 }}"
+            --min-latest-session-count "${{ inputs.min_latest_session_count }}"
+          )
+
+          if [ -n "${{ inputs.wait_text_2 }}" ]; then
+            args+=(--wait-text "${{ inputs.wait_text_2 }}")
+          fi
+          if [ -n "${{ inputs.forbid_text_1 }}" ]; then
+            args+=(--forbid-text "${{ inputs.forbid_text_1 }}")
+          fi
+          if [ -n "${{ inputs.forbid_text_2 }}" ]; then
+            args+=(--forbid-text "${{ inputs.forbid_text_2 }}")
+          fi
+
+          npm run verify:live -- "${args[@]}" | tee "$VERIFY_ARTIFACT_DIR/result.json"
+
+      - name: Upload verification artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-live-${{ github.run_id }}
+          path: |
+            artifacts/verify-live/**
+            videos/*.mp4
+
+      - name: Write artifact guidance
+        if: always()
+        run: |
+          {
+            echo "## Live verification artifact"
+            echo
+            echo "- Route: \`${VERIFY_ROUTE}\`"
+            echo "- Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- Download the \`verify-live-${{ github.run_id }}\` artifact from the run page."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop Daneel dev server
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f "$VERIFY_ARTIFACT_DIR/dev-server.pid" ]; then
+            kill "$(cat "$VERIFY_ARTIFACT_DIR/dev-server.pid")" 2>/dev/null || true
+          fi
