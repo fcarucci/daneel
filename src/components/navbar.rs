@@ -2,8 +2,8 @@
 
 use dioxus::prelude::*;
 
+use crate::client::{AppClient, WebAppClient};
 use crate::components::live_gateway::use_live_gateway;
-use crate::gateway::get_gateway_status;
 use crate::models::gateway::GatewayLevel;
 use crate::models::live_gateway::{
     LiveGatewayLevel, OperatorConnectionState, resolve_operator_connection_state,
@@ -11,7 +11,11 @@ use crate::models::live_gateway::{
 
 #[component]
 pub fn TopBar() -> Element {
-    let gateway_status = use_resource(|| async move { get_gateway_status().await });
+    let client = WebAppClient;
+    let gateway_status = use_resource(move || {
+        let client = client.clone();
+        async move { client.get_gateway_status().await }
+    });
     let live_gateway = use_live_gateway();
 
     let pill = status_pill(resolved_live_level(&gateway_status, &live_gateway));

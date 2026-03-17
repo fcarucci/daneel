@@ -2,12 +2,16 @@
 
 use dioxus::prelude::*;
 
-use crate::gateway::get_gateway_status;
+use crate::client::{AppClient, WebAppClient};
 use crate::models::gateway::{GatewayLevel, GatewayStatusSnapshot};
 
 #[component]
 pub fn Dashboard() -> Element {
-    let gateway_status = use_resource(|| async move { get_gateway_status().await });
+    let client = WebAppClient;
+    let gateway_status = use_resource(move || {
+        let client = client.clone();
+        async move { client.get_gateway_status().await }
+    });
 
     rsx! {
         section { class: "flex flex-col gap-5",

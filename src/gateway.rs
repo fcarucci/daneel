@@ -21,12 +21,12 @@ pub(crate) use config::{DEFAULT_GATEWAY_URL, load_gateway_config};
 #[cfg(feature = "server")]
 pub(crate) use ws::{connect_request, wait_for_response};
 
-#[server]
+#[server(endpoint = "gateway/status")]
 pub async fn get_gateway_status() -> Result<GatewayStatusSnapshot, ServerFnError> {
     Ok(load_gateway_status().await)
 }
 
-#[server]
+#[server(endpoint = "agents/overview")]
 pub async fn get_agent_overview() -> Result<AgentOverviewSnapshot, ServerFnError> {
     agents::load_agent_overview()
         .await
