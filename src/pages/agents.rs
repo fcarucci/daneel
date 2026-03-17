@@ -8,9 +8,11 @@ use crate::utils::time::{ACTIVE_WINDOW_MS, format_age_badge};
 
 const AGENT_TILE_ACTIVE_CLASS: &str = "group relative overflow-hidden rounded-[1.9rem] border border-emerald-300/35 bg-[linear-gradient(180deg,rgba(14,28,32,0.96),rgba(5,12,24,0.98))] px-5 py-5 shadow-[0_0_0_1px_rgba(110,231,183,0.14),0_0_42px_rgba(16,185,129,0.28),0_0_90px_rgba(16,185,129,0.08),0_24px_64px_rgba(2,6,23,0.42)] backdrop-blur-xl";
 const AGENT_TILE_IDLE_CLASS: &str = "group relative overflow-hidden rounded-[1.9rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(6,11,25,0.98))] px-5 py-5 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl";
-const STATUS_DOT_ACTIVE_CLASS: &str = "h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.95)]";
+const STATUS_DOT_ACTIVE_CLASS: &str =
+    "h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.95)]";
 const STATUS_DOT_IDLE_CLASS: &str = "h-2.5 w-2.5 rounded-full bg-slate-500";
-const HEART_ACTIVE_CLASS: &str = "shrink-0 text-rose-400 drop-shadow-[0_0_8px_rgba(251,113,133,0.55)]";
+const HEART_ACTIVE_CLASS: &str =
+    "shrink-0 text-rose-400 drop-shadow-[0_0_8px_rgba(251,113,133,0.55)]";
 const HEART_IDLE_CLASS: &str = "shrink-0 text-slate-600";
 const RECENT_BADGE_ACTIVE_CLASS: &str = "inline-flex rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-emerald-200";
 const RECENT_BADGE_IDLE_CLASS: &str = "inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-300";

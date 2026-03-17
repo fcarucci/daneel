@@ -31,7 +31,7 @@ fn attach_live_gateway_listener(
     live_status: Signal<Option<LiveGatewayEvent>>,
     live_seen: Signal<bool>,
 ) {
-    use web_sys::wasm_bindgen::{closure::Closure, JsCast};
+    use web_sys::wasm_bindgen::{JsCast, closure::Closure};
 
     if !live_stream_enabled() || *live_listener_attached.peek() {
         return;

@@ -31,7 +31,9 @@ pub async fn get_gateway_status() -> Result<GatewayStatusSnapshot, ServerFnError
 
 #[server]
 pub async fn get_agent_overview() -> Result<AgentOverviewSnapshot, ServerFnError> {
-    agents::load_agent_overview().await.map_err(ServerFnError::new)
+    agents::load_agent_overview()
+        .await
+        .map_err(ServerFnError::new)
 }
 
 async fn load_gateway_status() -> GatewayStatusSnapshot {
