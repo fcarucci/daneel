@@ -128,8 +128,7 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
     } else {
         STATUS_DOT_IDLE_CLASS
     };
-    let heartbeat_enabled =
-        heartbeat_is_active(agent.heartbeat_enabled, &agent.heartbeat_schedule);
+    let heartbeat_enabled = heartbeat_is_active(agent.heartbeat_enabled, &agent.heartbeat_schedule);
     let heart_class = heartbeat_icon_class(heartbeat_enabled);
     let recent_activity_badge = displayed_age_ms
         .map(format_age_badge)
@@ -244,10 +243,7 @@ mod tests {
     }
 
     fn render_agent_card(agent: AgentOverviewItem) -> String {
-        let mut dom = VirtualDom::new_with_props(
-            AgentCardHarness,
-            AgentCardHarnessProps { agent },
-        );
+        let mut dom = VirtualDom::new_with_props(AgentCardHarness, AgentCardHarnessProps { agent });
         dom.rebuild_in_place();
         dioxus_ssr::render(&dom)
     }

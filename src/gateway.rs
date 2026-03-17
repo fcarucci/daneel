@@ -3,6 +3,8 @@
 
 use dioxus::prelude::{ServerFnError, dioxus_fullstack, server};
 
+#[cfg(feature = "server")]
+use crate::app_state::server_gateway_config;
 use crate::models::{agents::AgentOverviewSnapshot, gateway::GatewayStatusSnapshot};
 
 mod agents;
@@ -12,9 +14,9 @@ mod session_store;
 mod status;
 mod ws;
 
-pub(crate) use config::{DEFAULT_GATEWAY_URL, load_gateway_config};
 #[cfg(feature = "server")]
 pub(crate) use config::LoadedGatewayConfig;
+pub(crate) use config::{DEFAULT_GATEWAY_URL, load_gateway_config};
 
 #[cfg(feature = "server")]
 pub(crate) use ws::{connect_request, wait_for_response};
@@ -32,19 +34,19 @@ pub async fn get_agent_overview() -> Result<AgentOverviewSnapshot, ServerFnError
 }
 
 async fn load_gateway_status() -> GatewayStatusSnapshot {
-    let config = match load_gateway_config() {
-        Ok(config) => config,
-        Err(error) => {
-            return degraded_gateway_status(
-                DEFAULT_GATEWAY_URL.to_string(),
-                "Gateway configuration unavailable",
-                error,
-            );
-        }
-    };
-
     #[cfg(feature = "server")]
     {
+        let config = match server_gateway_config() {
+            Ok(config) => config,
+            Err(error) => {
+                return degraded_gateway_status(
+                    DEFAULT_GATEWAY_URL.to_string(),
+                    "Gateway configuration unavailable",
+                    error,
+                );
+            }
+        };
+
         match status::fetch_gateway_status_via_websocket(&config).await {
             Ok(snapshot) => snapshot,
             Err(error) => {
@@ -55,6 +57,17 @@ async fn load_gateway_status() -> GatewayStatusSnapshot {
 
     #[cfg(not(feature = "server"))]
     {
+        let config = match load_gateway_config() {
+            Ok(config) => config,
+            Err(error) => {
+                return degraded_gateway_status(
+                    DEFAULT_GATEWAY_URL.to_string(),
+                    "Gateway configuration unavailable",
+                    error,
+                );
+            }
+        };
+
         degraded_gateway_status(
             config.ws_url,
             "Gateway status is only available from the server build",
@@ -75,7 +88,7 @@ fn degraded_gateway_status(
 mod tests {
     use crate::models::gateway::GatewayLevel;
 
-    use super::{connect_request, load_gateway_config};
+    use super::{connect_request, load_gateway_config, status};
 
     #[test]
     fn connect_request_uses_backend_gateway_identity() {

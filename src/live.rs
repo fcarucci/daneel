@@ -4,13 +4,13 @@
 use std::time::Duration;
 
 #[cfg(feature = "server")]
+use crate::app_state::server_gateway_config;
+#[cfg(feature = "server")]
 use crate::models::live_gateway::{LiveGatewayEvent, LiveGatewayLevel};
 
 #[cfg(feature = "server")]
 use {
-    crate::gateway::{
-        LoadedGatewayConfig, connect_request, load_gateway_config, wait_for_response,
-    },
+    crate::gateway::{LoadedGatewayConfig, connect_request, wait_for_response},
     dioxus_server::axum::{
         self, Router,
         response::sse::{Event, KeepAlive, Sse},
@@ -130,7 +130,7 @@ pub fn router() -> Router {
 
 #[cfg(feature = "server")]
 pub async fn run_gateway_event_bridge(hub: LiveEventHub) {
-    let config = match load_gateway_config() {
+    let config = match server_gateway_config() {
         Ok(config) => config,
         Err(error) => {
             hub.publish(LiveGatewayEvent::unavailable(error));
