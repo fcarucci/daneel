@@ -15,6 +15,7 @@ Thumbs.db
 .env
 .env.*
 .direnv/
+.ccp/
 node_modules/
 **/node_modules/
 .npm/
