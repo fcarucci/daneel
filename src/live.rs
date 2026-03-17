@@ -303,9 +303,9 @@ async fn sse_gateway_events() -> Sse<impl futures_util::Stream<Item = Result<Eve
     });
     let stream = initial_stream.chain(update_stream);
 
-    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(
-        LIVE_BRIDGE_CONFIG.sse_keep_alive_secs,
-    )))
+    Sse::new(stream).keep_alive(
+        KeepAlive::new().interval(Duration::from_secs(LIVE_BRIDGE_CONFIG.sse_keep_alive_secs)),
+    )
 }
 
 #[cfg(feature = "server")]
