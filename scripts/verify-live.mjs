@@ -69,6 +69,15 @@ function parseArgs(argv) {
   return options;
 }
 
+function parseCommand(argv) {
+  const [maybeCommand, ...rest] = argv;
+  if (maybeCommand === "verify" || maybeCommand === "upload") {
+    return { command: maybeCommand, argv: rest };
+  }
+
+  return { command: "verify", argv };
+}
+
 function parseViewport(value) {
   const [width, height] = value
     .split(",")
@@ -199,6 +208,104 @@ async function persistRecordedVideo(recordedVideoPath, requestedVideoPath, url) 
   return resolvedVideoPath;
 }
 
+function parseUploadArgs(argv) {
+  const options = {
+    video: "",
+    tag: "verification-artifacts",
+    releaseName: "Verification Artifacts",
+    releaseBody: "Temporary verification media uploaded from local review runs.",
+    label: "",
+    pr: 0,
+    route: "/agents",
+    latestSessionCount: "",
+    connectedRibbon: "",
+    screenshot: "",
+    dom: "",
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const next = argv[index + 1];
+
+    if (arg === "--video") {
+      options.video = next;
+      index += 1;
+    } else if (arg === "--tag") {
+      options.tag = next;
+      index += 1;
+    } else if (arg === "--release-name") {
+      options.releaseName = next;
+      index += 1;
+    } else if (arg === "--release-body") {
+      options.releaseBody = next;
+      index += 1;
+    } else if (arg === "--label") {
+      options.label = next;
+      index += 1;
+    } else if (arg === "--pr") {
+      options.pr = Number.parseInt(next, 10);
+      index += 1;
+    } else if (arg === "--route") {
+      options.route = next;
+      index += 1;
+    } else if (arg === "--latest-session-count") {
+      options.latestSessionCount = next;
+      index += 1;
+    } else if (arg === "--connected-ribbon") {
+      options.connectedRibbon = next;
+      index += 1;
+    } else if (arg === "--screenshot") {
+      options.screenshot = next;
+      index += 1;
+    } else if (arg === "--dom") {
+      options.dom = next;
+      index += 1;
+    }
+  }
+
+  return options;
+}
+
+async function runCommand(command, args) {
+  const child = spawn(command, args, {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let stdout = "";
+  let stderr = "";
+
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk.toString();
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk.toString();
+  });
+
+  await new Promise((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(
+        new Error(
+          `${command} ${args.join(" ")} failed with code ${code}\n${stderr || stdout}`
+        )
+      );
+    });
+  });
+
+  return stdout.trim();
+}
+
+async function runGitHubAdmin(args) {
+  const stdout = await runCommand("node", ["scripts/github-admin.mjs", ...args]);
+  return stdout ? JSON.parse(stdout) : null;
+}
+
 async function waitForLiveRoute(page, options) {
   await page.waitForFunction(
     ({ waitTexts, forbidTexts, minLatestSessionCount }) => {
@@ -256,8 +363,8 @@ async function captureSummary(page) {
   });
 }
 
-async function main() {
-  const options = parseArgs(process.argv.slice(2));
+async function verifyRoute(argv) {
+  const options = parseArgs(argv);
   const browser = await chromium.launch({
     executablePath: options.browserPath || undefined,
     headless: true,
@@ -321,6 +428,84 @@ async function main() {
   } finally {
     await browser.close();
   }
+}
+
+async function uploadVideo(argv) {
+  const options = parseUploadArgs(argv);
+  if (!options.video) {
+    throw new Error("upload requires --video <path>.");
+  }
+
+  const resolvedVideoPath = path.resolve(options.video);
+  await fs.access(resolvedVideoPath);
+
+  await runGitHubAdmin([
+    "ensure-release",
+    "--tag",
+    options.tag,
+    "--name",
+    options.releaseName,
+    "--body",
+    options.releaseBody,
+    "--draft",
+    "--prerelease",
+  ]);
+
+  const uploadResult = await runGitHubAdmin([
+    "upload-release-asset",
+    "--tag",
+    options.tag,
+    "--file",
+    resolvedVideoPath,
+    ...(options.label ? ["--label", options.label] : []),
+  ]);
+
+  let prComment = null;
+  if (Number.isInteger(options.pr) && options.pr > 0) {
+    prComment = await runGitHubAdmin([
+      "comment-pr-verification",
+      "--number",
+      String(options.pr),
+      "--route",
+      options.route,
+      "--artifact-url",
+      uploadResult.asset.download_url,
+      ...(options.latestSessionCount
+        ? ["--latest-session-count", String(options.latestSessionCount)]
+        : []),
+      ...(options.connectedRibbon
+        ? ["--connected-ribbon", String(options.connectedRibbon)]
+        : []),
+      ...(options.screenshot ? ["--screenshot", options.screenshot] : []),
+      ...(options.dom ? ["--dom", options.dom] : []),
+      "--video",
+      resolvedVideoPath,
+    ]);
+  }
+
+  process.stdout.write(
+    JSON.stringify(
+      {
+        uploaded: true,
+        video: resolvedVideoPath,
+        release: uploadResult.release,
+        asset: uploadResult.asset,
+        prComment,
+      },
+      null,
+      2
+    ) + "\n"
+  );
+}
+
+async function main() {
+  const { command, argv } = parseCommand(process.argv.slice(2));
+  if (command === "upload") {
+    await uploadVideo(argv);
+    return;
+  }
+
+  await verifyRoute(argv);
 }
 
 main().catch((error) => {
