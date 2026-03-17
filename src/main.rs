@@ -2,6 +2,7 @@
 
 mod adapter;
 mod app_state;
+mod client;
 mod components;
 mod gateway;
 mod live;

@@ -42,7 +42,7 @@ pub(crate) fn use_live_gateway() -> LiveGatewayState {
 
 fn use_live_gateway_state() -> LiveGatewayState {
     let live_status = use_signal(|| None::<LiveGatewayEvent>);
-    let backend_state = use_signal(|| initial_backend_connection_state());
+    let backend_state = use_signal(initial_backend_connection_state);
     let _ = non_wasm_reconnect_state_sentinel();
 
     #[cfg(target_arch = "wasm32")]

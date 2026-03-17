@@ -18,7 +18,7 @@ web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
 fullstack = ["dioxus/fullstack"]
-server = ["dioxus/server", "dep:dioxus-server", "dep:futures-util", "dep:tokio", "dep:tokio-stream", "dep:tokio-tungstenite"]
+server = ["dioxus/server", "dep:dioxus-server", "dep:futures-util", "dep:tokio", "dep:tokio-stream", "dep:tokio-tungstenite", "dep:async-trait"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 gloo-timers = { version = "0.3", features = ["futures"] }
@@ -34,6 +34,10 @@ optional = true
 
 [dependencies.tokio-tungstenite]
 version = "0.28"
+optional = true
+
+[dependencies.async-trait]
+version = "0.1"
 optional = true
 
 [dev-dependencies]
