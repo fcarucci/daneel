@@ -151,6 +151,7 @@ Commands:
   list-open-prs
   list-prs [--state <open|closed|all>]
   list-pr-review-threads --number <n>
+  resolve-pr-review-thread --thread-id <id>
   merge-pr --number <n> [--method <merge|squash|rebase>] [--title <title>] [--message <text>]
   create-pr --head <branch> --title <title> [--base <branch>] [--body <text>] [--issue <n>] [--draft]
   update-pr --number <n> [--title <title>] [--body <text>] [--base <branch>] [--state <open|closed>]
@@ -917,6 +918,32 @@ async function listPrReviewThreads(options) {
   );
 }
 
+async function resolvePrReviewThread(options) {
+  const threadId = options["thread-id"] || options.threadId;
+  if (!threadId) {
+    throw new Error("resolve-pr-review-thread requires --thread-id <id>.");
+  }
+
+  const data = await graphql(
+    `
+    mutation($threadId:ID!) {
+      resolveReviewThread(input:{threadId:$threadId}) {
+        thread {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+        }
+      }
+    }
+    `,
+    { threadId },
+  );
+
+  console.log(JSON.stringify(data.resolveReviewThread.thread, null, 2));
+}
+
 async function createPr(options) {
   const { owner, repo } = repoParts();
   const head = options.head;
@@ -1571,6 +1598,7 @@ const commands = {
   "list-open-prs": listOpenPrs,
   "list-prs": () => listPrs(options),
   "list-pr-review-threads": () => listPrReviewThreads(options),
+  "resolve-pr-review-thread": () => resolvePrReviewThread(options),
   "merge-pr": () => mergePr(options),
   "create-pr": () => createPr(options),
   "update-pr": () => updatePr(options),
