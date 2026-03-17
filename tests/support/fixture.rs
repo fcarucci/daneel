@@ -24,6 +24,7 @@ pub(crate) struct MockAgent {
     id: String,
     is_default: bool,
     heartbeat_enabled: bool,
+    heartbeat_every: String,
     session_store_path: PathBuf,
     latest_session_key: String,
     latest_activity_age_ms: u64,
@@ -34,6 +35,7 @@ impl MockAgent {
         id: &str,
         is_default: bool,
         heartbeat_enabled: bool,
+        heartbeat_every: &str,
         session_store_path: &Path,
         latest_session_key: &str,
         latest_activity_age_ms: u64,
@@ -42,6 +44,7 @@ impl MockAgent {
             id: id.to_string(),
             is_default,
             heartbeat_enabled,
+            heartbeat_every: heartbeat_every.to_string(),
             session_store_path: session_store_path.to_path_buf(),
             latest_session_key: latest_session_key.to_string(),
             latest_activity_age_ms,
@@ -55,7 +58,7 @@ impl MockAgent {
             "isDefault": self.is_default,
             "heartbeat": {
                 "enabled": self.heartbeat_enabled,
-                "every": if self.heartbeat_enabled { "120m" } else { "disabled" },
+                "every": self.heartbeat_every,
                 "model": if self.is_default {
                     Value::String("default".to_string())
                 } else {
@@ -113,6 +116,7 @@ impl TestFixture {
                         "main",
                         true,
                         true,
+                        "120m",
                         &main_path,
                         "agent:main:cron:alpha",
                         120_000,
@@ -121,6 +125,7 @@ impl TestFixture {
                         "calendar",
                         false,
                         true,
+                        "120m",
                         &calendar_path,
                         "agent:calendar:cron:beta",
                         300_000,
@@ -128,7 +133,8 @@ impl TestFixture {
                     MockAgent::new(
                         "planner",
                         false,
-                        false,
+                        true,
+                        "0m",
                         &planner_path,
                         "agent:planner:cron:gamma",
                         8_400_000,

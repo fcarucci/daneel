@@ -733,6 +733,7 @@ dependencies = [
  "dioxus-server",
  "dioxus-ssr",
  "futures-util",
+ "gloo-timers",
  "serde",
  "serde_json",
  "serial_test",

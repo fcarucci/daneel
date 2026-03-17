@@ -19,6 +19,9 @@ mobile = ["dioxus/mobile"]
 fullstack = ["dioxus/fullstack"]
 server = ["dioxus/server", "dep:dioxus-server", "dep:futures-util", "dep:tokio", "dep:tokio-stream", "dep:tokio-tungstenite"]
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-timers = { version = "0.3", features = ["futures"] }
+
 [dependencies.futures-util]
 version = "0.3"
 optional = true

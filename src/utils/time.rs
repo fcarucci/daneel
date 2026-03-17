@@ -18,3 +18,71 @@ pub(crate) fn format_age_badge(age_ms: u64) -> String {
         format!("{}d ago", age_ms / DAY_MS)
     }
 }
+
+/// Returns true when the heartbeat indicator should glow (active/rose).
+/// Gray when disabled OR schedule is empty, "none", zero-like, or "disabled".
+pub(crate) fn heartbeat_is_active(enabled: bool, schedule: &str) -> bool {
+    if !enabled {
+        return false;
+    }
+    let compact = schedule
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+
+    !(compact.is_empty()
+        || compact == "none"
+        || compact == "disabled"
+        || is_zero_like_interval(&compact))
+}
+
+fn is_zero_like_interval(compact: &str) -> bool {
+    compact == "0"
+        || compact
+            .strip_suffix(['m', 'h', 'd', 's'])
+            .is_some_and(|value| value == "0")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn heartbeat_disabled_flag_is_gray() {
+        assert!(!heartbeat_is_active(false, "*/5 * * * *"));
+    }
+    #[test]
+    fn heartbeat_empty_schedule_is_gray() {
+        assert!(!heartbeat_is_active(true, ""));
+    }
+    #[test]
+    fn heartbeat_none_schedule_is_gray() {
+        assert!(!heartbeat_is_active(true, "none"));
+    }
+    #[test]
+    fn heartbeat_none_mixed_case_is_gray() {
+        assert!(!heartbeat_is_active(true, "None"));
+    }
+    #[test]
+    fn heartbeat_zero_schedule_is_gray() {
+        assert!(!heartbeat_is_active(true, "0"));
+    }
+    #[test]
+    fn heartbeat_zero_minutes_schedule_is_gray() {
+        assert!(!heartbeat_is_active(true, "0m"));
+    }
+    #[test]
+    fn heartbeat_disabled_string_is_gray() {
+        assert!(!heartbeat_is_active(true, "disabled"));
+    }
+    #[test]
+    fn heartbeat_valid_cron_is_active() {
+        assert!(heartbeat_is_active(true, "*/5 * * * *"));
+    }
+    #[test]
+    fn heartbeat_valid_interval_is_active() {
+        assert!(heartbeat_is_active(true, "30m"));
+    }
+}

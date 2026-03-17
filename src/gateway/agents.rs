@@ -132,7 +132,7 @@ fn map_heartbeat(agent: &Value) -> (bool, String, Option<String>) {
             .get("every")
             .and_then(Value::as_str)
             .map(ToOwned::to_owned)
-            .unwrap_or_else(|| "Scheduled".to_string())
+            .unwrap_or_default()
     } else {
         "Disabled".to_string()
     };

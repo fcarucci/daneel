@@ -13,14 +13,9 @@ mod status;
 mod ws;
 
 pub(crate) use config::{DEFAULT_GATEWAY_URL, load_gateway_config};
-
 #[cfg(feature = "server")]
 pub(crate) use config::LoadedGatewayConfig;
-#[cfg(feature = "server")]
-pub(crate) use ws::Envelope;
 
-#[cfg(feature = "server")]
-pub(crate) use status::fetch_gateway_status_via_websocket;
 #[cfg(feature = "server")]
 pub(crate) use ws::{connect_request, wait_for_response};
 
@@ -75,14 +70,12 @@ fn degraded_gateway_status(
 ) -> GatewayStatusSnapshot {
     GatewayStatusSnapshot::degraded(gateway_url, summary, detail)
 }
-#[cfg(feature = "server")]
-use crate::models::gateway::GatewayLevel;
 
 #[cfg(all(test, feature = "server"))]
 mod tests {
-    use super::{
-        GatewayLevel, connect_request, fetch_gateway_status_via_websocket, load_gateway_config,
-    };
+    use crate::models::gateway::GatewayLevel;
+
+    use super::{connect_request, load_gateway_config};
 
     #[test]
     fn connect_request_uses_backend_gateway_identity() {
@@ -106,4 +99,3 @@ mod tests {
         assert!(matches!(snapshot.level, GatewayLevel::Healthy));
     }
 }
-// SPDX-License-Identifier: Apache-2.0

@@ -146,8 +146,13 @@ Commands:
   reconcile-poc-doc
   find-task --task <Tn.n>
   list-tasks [--limit <n>]
+  list-issue-comments --issue <n>
+  delete-issue-comment --comment-id <n>
   list-open-prs
   list-prs [--state <open|closed|all>]
+  list-pr-review-threads --number <n>
+  resolve-pr-review-thread --thread-id <id>
+  merge-pr --number <n> [--method <merge|squash|rebase>] [--title <title>] [--message <text>]
   create-pr --head <branch> --title <title> [--base <branch>] [--body <text>] [--issue <n>] [--draft]
   update-pr --number <n> [--title <title>] [--body <text>] [--base <branch>] [--state <open|closed>]
   link-pr-task --pr <n> --issue <n> [--close]
@@ -761,6 +766,182 @@ async function listPrs(options) {
 
 async function listOpenPrs() {
   await listPrs({ state: "open" });
+}
+
+async function listIssueComments(options) {
+  const { owner, repo } = repoParts();
+  const issueNumber = Number(options.issue);
+  if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+    throw new Error("list-issue-comments requires --issue <n>.");
+  }
+
+  const comments = await rest(
+    "GET",
+    `/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100`,
+  );
+
+  console.log(
+    JSON.stringify(
+      comments.map((comment) => ({
+        id: comment.id,
+        user: comment.user?.login,
+        created_at: comment.created_at,
+        body: comment.body,
+        url: comment.html_url,
+      })),
+      null,
+      2,
+    ),
+  );
+}
+
+async function deleteIssueComment(options) {
+  const { owner, repo } = repoParts();
+  const commentId = Number(options["comment-id"] || options.commentId);
+  if (!Number.isInteger(commentId) || commentId <= 0) {
+    throw new Error("delete-issue-comment requires --comment-id <n>.");
+  }
+
+  await rest("DELETE", `/repos/${owner}/${repo}/issues/comments/${commentId}`);
+  console.log(JSON.stringify({ deleted: true, commentId }, null, 2));
+}
+
+async function mergePr(options) {
+  const { owner, repo } = repoParts();
+  const number = Number(options.number);
+  const method = options.method || "merge";
+
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("merge-pr requires --number <n>.");
+  }
+  if (!["merge", "squash", "rebase"].includes(method)) {
+    throw new Error("merge-pr --method must be one of: merge, squash, rebase.");
+  }
+
+  const pull = await getPullRequest(number);
+  const payload = {
+    merge_method: method,
+  };
+
+  if (options.title) {
+    payload.commit_title = options.title;
+  }
+  if (options.message) {
+    payload.commit_message = options.message;
+  }
+  if (pull.head?.sha) {
+    payload.sha = pull.head.sha;
+  }
+
+  const result = await rest("PUT", `/repos/${owner}/${repo}/pulls/${number}/merge`, payload);
+  console.log(
+    JSON.stringify(
+      {
+        merged: result.merged,
+        message: result.message,
+        sha: result.sha,
+        pullRequest: {
+          number,
+          url: pullUrl(number),
+        },
+        method,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function listPrReviewThreads(options) {
+  const number = Number(options.number);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("list-pr-review-threads requires --number <n>.");
+  }
+
+  const { owner, repo } = repoParts();
+  const data = await graphql(
+    `
+    query($owner:String!, $repo:String!, $number:Int!) {
+      repository(owner:$owner, name:$repo) {
+        pullRequest(number:$number) {
+          number
+          title
+          reviewThreads(first:100) {
+            nodes {
+              id
+              isResolved
+              isOutdated
+              path
+              line
+              comments(first:20) {
+                nodes {
+                  id
+                  author { login }
+                  body
+                  createdAt
+                  url
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    `,
+    { owner, repo, number },
+  );
+
+  const pr = data.repository.pullRequest;
+  console.log(
+    JSON.stringify(
+      {
+        number: pr.number,
+        title: pr.title,
+        threads: pr.reviewThreads.nodes.map((thread) => ({
+          id: thread.id,
+          isResolved: thread.isResolved,
+          isOutdated: thread.isOutdated,
+          path: thread.path,
+          line: thread.line,
+          comments: thread.comments.nodes.map((comment) => ({
+            id: comment.id,
+            author: comment.author?.login,
+            body: comment.body,
+            createdAt: comment.createdAt,
+            url: comment.url,
+          })),
+        })),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function resolvePrReviewThread(options) {
+  const threadId = options["thread-id"] || options.threadId;
+  if (!threadId) {
+    throw new Error("resolve-pr-review-thread requires --thread-id <id>.");
+  }
+
+  const data = await graphql(
+    `
+    mutation($threadId:ID!) {
+      resolveReviewThread(input:{threadId:$threadId}) {
+        thread {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+        }
+      }
+    }
+    `,
+    { threadId },
+  );
+
+  console.log(JSON.stringify(data.resolveReviewThread.thread, null, 2));
 }
 
 async function createPr(options) {
@@ -1412,8 +1593,13 @@ const commands = {
   "reconcile-poc-doc": reconcilePocDoc,
   "find-task": () => findTask(options),
   "list-tasks": () => listTasks(options),
+  "list-issue-comments": () => listIssueComments(options),
+  "delete-issue-comment": () => deleteIssueComment(options),
   "list-open-prs": listOpenPrs,
   "list-prs": () => listPrs(options),
+  "list-pr-review-threads": () => listPrReviewThreads(options),
+  "resolve-pr-review-thread": () => resolvePrReviewThread(options),
+  "merge-pr": () => mergePr(options),
   "create-pr": () => createPr(options),
   "update-pr": () => updatePr(options),
   "link-pr-task": () => linkPrTask(options),
