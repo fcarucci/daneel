@@ -2,4 +2,5 @@
 
 pub mod agents;
 pub mod gateway;
+pub mod graph;
 pub mod live_gateway;
