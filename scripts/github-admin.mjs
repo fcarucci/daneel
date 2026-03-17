@@ -150,6 +150,7 @@ Commands:
   delete-issue-comment --comment-id <n>
   list-open-prs
   list-prs [--state <open|closed|all>]
+  comment-pr --number <n> --body <text>
   list-pr-review-threads --number <n>
   resolve-pr-review-thread --thread-id <id>
   merge-pr --number <n> [--method <merge|squash|rebase>] [--title <title>] [--message <text>]
@@ -804,6 +805,37 @@ async function deleteIssueComment(options) {
 
   await rest("DELETE", `/repos/${owner}/${repo}/issues/comments/${commentId}`);
   console.log(JSON.stringify({ deleted: true, commentId }, null, 2));
+}
+
+async function commentPr(options) {
+  const { owner, repo } = repoParts();
+  const number = Number(options.number);
+  const body = options.body;
+
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("comment-pr requires --number <n>.");
+  }
+  if (!body || typeof body !== "string") {
+    throw new Error("comment-pr requires --body <text>.");
+  }
+
+  const comment = await rest(
+    "POST",
+    `/repos/${owner}/${repo}/issues/${number}/comments`,
+    { body },
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        id: comment.id,
+        url: comment.html_url,
+        created_at: comment.created_at,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 async function mergePr(options) {
@@ -1597,6 +1629,7 @@ const commands = {
   "delete-issue-comment": () => deleteIssueComment(options),
   "list-open-prs": listOpenPrs,
   "list-prs": () => listPrs(options),
+  "comment-pr": () => commentPr(options),
   "list-pr-review-threads": () => listPrReviewThreads(options),
   "resolve-pr-review-thread": () => resolvePrReviewThread(options),
   "merge-pr": () => mergePr(options),
