@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+#![cfg_attr(not(test), allow(dead_code))]
 
 use std::sync::Arc;
 
-use crate::models::{agents::AgentOverviewSnapshot, gateway::GatewayStatusSnapshot};
+use crate::models::{
+    agents::AgentOverviewSnapshot, gateway::GatewayStatusSnapshot, graph::AgentGraphSnapshot,
+};
 use async_trait::async_trait;
 use dioxus::prelude::{ServerFnError, use_context};
 
@@ -25,6 +28,9 @@ pub trait AppClient: Send + Sync + 'static {
 
     /// Fetch agent overview snapshot
     async fn get_agent_overview(&self) -> Result<AgentOverviewSnapshot, ServerFnError>;
+
+    /// Fetch graph snapshot
+    async fn get_agent_graph_snapshot(&self) -> Result<AgentGraphSnapshot, ServerFnError>;
 }
 
 #[derive(Clone)]
@@ -50,6 +56,10 @@ impl AppClientHandle {
     pub async fn get_agent_overview(&self) -> Result<AgentOverviewSnapshot, ServerFnError> {
         self.0.get_agent_overview().await
     }
+
+    pub async fn get_agent_graph_snapshot(&self) -> Result<AgentGraphSnapshot, ServerFnError> {
+        self.0.get_agent_graph_snapshot().await
+    }
 }
 
 impl Default for AppClientHandle {
@@ -70,6 +80,10 @@ impl AppClient for WebAppClient {
 
     async fn get_agent_overview(&self) -> Result<AgentOverviewSnapshot, ServerFnError> {
         crate::gateway::get_agent_overview().await
+    }
+
+    async fn get_agent_graph_snapshot(&self) -> Result<AgentGraphSnapshot, ServerFnError> {
+        crate::gateway::get_agent_graph_snapshot().await
     }
 }
 

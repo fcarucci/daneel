@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::AppClient;
-use crate::models::{agents::AgentOverviewSnapshot, gateway::GatewayStatusSnapshot};
+use crate::models::{
+    agents::AgentOverviewSnapshot,
+    gateway::GatewayStatusSnapshot,
+    graph::{AgentEdge, AgentEdgeKind, AgentGraphSnapshot, AgentNode, AgentStatus},
+};
 use async_trait::async_trait;
 use dioxus::prelude::ServerFnError;
 
@@ -9,16 +13,19 @@ use dioxus::prelude::ServerFnError;
 pub struct MockAppClient {
     gateway_status: Result<GatewayStatusSnapshot, ServerFnError>,
     agent_overview: Result<AgentOverviewSnapshot, ServerFnError>,
+    graph_snapshot: Result<AgentGraphSnapshot, ServerFnError>,
 }
 
 impl MockAppClient {
     pub fn new(
         gateway_status: Result<GatewayStatusSnapshot, ServerFnError>,
         agent_overview: Result<AgentOverviewSnapshot, ServerFnError>,
+        graph_snapshot: Result<AgentGraphSnapshot, ServerFnError>,
     ) -> Self {
         Self {
             gateway_status,
             agent_overview,
+            graph_snapshot,
         }
     }
 
@@ -41,6 +48,24 @@ impl MockAppClient {
                 active_recent_agents: 2,
                 agents: vec![],
             }),
+            Ok(AgentGraphSnapshot {
+                nodes: vec![AgentNode {
+                    id: "planner".to_string(),
+                    name: "planner".to_string(),
+                    is_default: true,
+                    heartbeat_enabled: true,
+                    heartbeat_schedule: "every 5m".to_string(),
+                    active_session_count: 1,
+                    latest_activity_age_ms: Some(250),
+                    status: AgentStatus::Active,
+                }],
+                edges: vec![AgentEdge {
+                    source_id: "planner".to_string(),
+                    target_id: "calendar".to_string(),
+                    kind: AgentEdgeKind::RoutesTo,
+                }],
+                snapshot_ts: 1_640_995_200_000,
+            }),
         )
     }
 
@@ -52,6 +77,7 @@ impl MockAppClient {
                 "Connection timeout",
             )),
             Err(ServerFnError::new("Gateway unavailable")),
+            Err(ServerFnError::new("Graph unavailable")),
         )
     }
 }
@@ -64,5 +90,9 @@ impl AppClient for MockAppClient {
 
     async fn get_agent_overview(&self) -> Result<AgentOverviewSnapshot, ServerFnError> {
         self.agent_overview.clone()
+    }
+
+    async fn get_agent_graph_snapshot(&self) -> Result<AgentGraphSnapshot, ServerFnError> {
+        self.graph_snapshot.clone()
     }
 }
