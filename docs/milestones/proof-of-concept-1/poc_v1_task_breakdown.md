@@ -710,17 +710,25 @@ Tests:
 
 Purpose:
 
-- provide a single typed payload for the first rich UI
+- provide one typed backend read for the first graph-driven UI slice
 
 Output:
 
-- server function returning nodes, edges, and gateway summary
+- explicit server function `get_agent_graph_snapshot()`
+- stable endpoint path for graph snapshot reads
+- `AppClient` support for fetching the graph snapshot
+- typed payload returning nodes, edges, and snapshot timestamp from graph assembly
 
 Tests:
 
-- integration test: server function returns a full graph snapshot with mock adapter data
-- component test: dashboard consumes and renders the snapshot without additional fetches
-- integration test: snapshot generation still succeeds when relationship hints are unavailable
+- unit test: web `AppClient` delegates graph snapshot reads through the new server-function path
+- integration test: `get_agent_graph_snapshot()` returns a full snapshot from mock adapter data
+- integration test: empty adapter data returns a valid empty graph snapshot instead of an error
+- integration test: server function preserves deterministic node and edge ordering from graph assembly
+- integration test: graph snapshot generation still succeeds when relationship hints are unavailable
+- integration test: explicit stable endpoint path is exposed for the graph snapshot server function
+- integration test: graph-consuming UI code can depend on the graph snapshot payload without additional fetch hops or transport-specific imports
+- live verification: existing live routes still hydrate correctly after the new graph snapshot server function is wired into the backend contract
 
 ---
 

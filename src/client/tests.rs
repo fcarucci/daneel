@@ -48,9 +48,12 @@ fn app_client_handle_uses_injected_mock_gateway_data() {
 
     let gateway_status = pollster::block_on(client.get_gateway_status()).unwrap();
     let agent_overview = pollster::block_on(client.get_agent_overview()).unwrap();
+    let graph_snapshot = pollster::block_on(client.get_agent_graph_snapshot()).unwrap();
 
     assert!(gateway_status.connected);
     assert_eq!(agent_overview.total_agents, 3);
+    assert_eq!(graph_snapshot.nodes.len(), 1);
+    assert_eq!(graph_snapshot.edges.len(), 1);
 }
 
 #[test]
@@ -71,6 +74,12 @@ fn error_mapping_preserves_degraded_semantics() {
             .unwrap_err()
             .to_string()
             .contains("Gateway unavailable")
+    );
+    assert!(
+        pollster::block_on(client.get_agent_graph_snapshot())
+            .unwrap_err()
+            .to_string()
+            .contains("Graph unavailable")
     );
 }
 
