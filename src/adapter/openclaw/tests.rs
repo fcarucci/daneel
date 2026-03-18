@@ -23,6 +23,7 @@ use crate::{
 
 use super::{
     OpenClawAdapter,
+    hints::load_agent_relationship_hints_from_path,
     mapping::{
         map_active_session_record, map_agent_node, map_binding_edge, normalize_active_sessions,
         normalize_binding_edges,
@@ -142,19 +143,52 @@ fn write_openclaw_config(
     tempdir: &std::path::Path,
     port: u16,
 ) -> Result<std::path::PathBuf, String> {
-    let config_path = tempdir.join("openclaw.json");
-    fs::write(
-        &config_path,
-        serde_json::to_vec_pretty(&json!({
+    write_custom_openclaw_config(
+        tempdir,
+        json!({
             "gateway": {
                 "port": port,
                 "auth": { "token": "test-token" }
             }
-        }))
-        .expect("serialize config"),
+        }),
+    )
+}
+
+fn write_custom_openclaw_config(
+    tempdir: &std::path::Path,
+    config: serde_json::Value,
+) -> Result<std::path::PathBuf, String> {
+    let config_path = tempdir.join("openclaw.json");
+    fs::write(
+        &config_path,
+        serde_json::to_vec_pretty(&config).expect("serialize config"),
     )
     .map_err(|error| format!("write config: {error}"))?;
     Ok(config_path)
+}
+
+fn write_agent_file(
+    tempdir: &std::path::Path,
+    agent_id: &str,
+    filename: &str,
+    contents: &str,
+) -> Result<(), String> {
+    let agent_dir = tempdir.join("agents").join(agent_id).join("agent");
+    fs::create_dir_all(&agent_dir).map_err(|error| format!("create agent dir: {error}"))?;
+    fs::write(agent_dir.join(filename), contents)
+        .map_err(|error| format!("write agent file: {error}"))
+}
+
+fn relationship_config(agents: serde_json::Value) -> serde_json::Value {
+    json!({
+        "gateway": {
+            "port": 18789,
+            "auth": { "token": "test-token" }
+        },
+        "agents": {
+            "list": agents
+        }
+    })
 }
 
 fn gateway_snapshot_payload(
@@ -581,4 +615,319 @@ async fn list_active_sessions_falls_back_to_agent_recent_entries() {
     assert_eq!(sessions[2].session_id, "session-3");
     assert_eq!(sessions[2].agent_id, "calendar");
     assert_eq!(sessions[2].task.as_deref(), Some("check inbox"));
+}
+
+#[test]
+fn planner_works_with_content_maps_to_collaboration_edges() {
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path = write_custom_openclaw_config(
+        tempdir.path(),
+        relationship_config(json!([
+            { "id": "planner", "name": "Planner" },
+            { "id": "coder", "name": "Coder" },
+            { "id": "health-coach", "name": "Health Coach" },
+            { "id": "email", "name": "Email" },
+            { "id": "calendar", "name": "Calendar" }
+        ])),
+    )
+    .expect("write relationship config");
+    write_agent_file(
+        tempdir.path(),
+        "planner",
+        "AGENTS.md",
+        r#"
+### Works With
+- **Coder Agent**: For implementation details
+- **Health Coach**: For health workflows
+- **Email Agent**: For communication workflow planning
+- **Calendar Agent**: For scheduling and timeline integration
+"#,
+    )
+    .expect("write planner AGENTS");
+
+    let edges = load_agent_relationship_hints_from_path(&config_path)
+        .expect("load relationship hints from markdown");
+
+    assert_eq!(edges.len(), 4);
+    assert_eq!(edges[0].source_id, "planner");
+    assert_eq!(edges[0].target_id, "calendar");
+    assert_eq!(edges[3].target_id, "health-coach");
+    assert!(
+        edges
+            .iter()
+            .all(|edge| edge.kind == AgentEdgeKind::MetadataHint)
+    );
+}
+
+#[test]
+fn works_with_entries_are_deduplicated_and_deterministic() {
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path = write_custom_openclaw_config(
+        tempdir.path(),
+        relationship_config(json!([
+            { "id": "planner", "name": "Planner" },
+            { "id": "coder", "name": "Coder" },
+            { "id": "calendar", "name": "Calendar" }
+        ])),
+    )
+    .expect("write relationship config");
+    write_agent_file(
+        tempdir.path(),
+        "planner",
+        "AGENTS.md",
+        r#"
+### Works With
+- **Coder Agent**: For implementation details
+- **Calendar Agent**: For scheduling
+- **Coder Agent**: Duplicate mention
+"#,
+    )
+    .expect("write planner AGENTS");
+
+    let edges = load_agent_relationship_hints_from_path(&config_path)
+        .expect("load deduplicated relationship hints");
+
+    assert_eq!(edges.len(), 2);
+    assert_eq!(edges[0].target_id, "calendar");
+    assert_eq!(edges[1].target_id, "coder");
+}
+
+#[test]
+fn health_coach_config_delegation_hint_maps_to_relationship_edge() {
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path = write_custom_openclaw_config(
+        tempdir.path(),
+        relationship_config(json!([
+            { "id": "health-coach", "name": "Health Coach" },
+            { "id": "coder", "name": "Coder" }
+        ])),
+    )
+    .expect("write relationship config");
+    write_agent_file(
+        tempdir.path(),
+        "health-coach",
+        "agent.json",
+        r#"{
+  "constraints": {
+    "noSkillOrScriptModification": "If a task requires code or skill changes, delegate to the coder agent and never attempt to make the changes directly."
+  }
+}"#,
+    )
+    .expect("write health-coach agent.json");
+
+    let edges = load_agent_relationship_hints_from_path(&config_path)
+        .expect("load relationship hints from config");
+
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].source_id, "health-coach");
+    assert_eq!(edges[0].target_id, "coder");
+    assert_eq!(edges[0].kind, AgentEdgeKind::MetadataHint);
+}
+
+#[test]
+fn unknown_referenced_agent_names_are_ignored_safely() {
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path = write_custom_openclaw_config(
+        tempdir.path(),
+        relationship_config(json!([
+            { "id": "planner", "name": "Planner" },
+            { "id": "coder", "name": "Coder" }
+        ])),
+    )
+    .expect("write relationship config");
+    write_agent_file(
+        tempdir.path(),
+        "planner",
+        "AGENTS.md",
+        r#"
+### Works With
+- **Ghost Agent**: This should be ignored
+- **Coder Agent**: For implementation details
+"#,
+    )
+    .expect("write planner AGENTS");
+
+    let edges = load_agent_relationship_hints_from_path(&config_path)
+        .expect("load relationship hints safely");
+
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].target_id, "coder");
+}
+
+#[test]
+fn missing_local_metadata_returns_empty_set_without_error() {
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path = write_custom_openclaw_config(
+        tempdir.path(),
+        relationship_config(json!([
+            { "id": "planner", "name": "Planner" },
+            { "id": "coder", "name": "Coder" }
+        ])),
+    )
+    .expect("write relationship config");
+
+    let edges = load_agent_relationship_hints_from_path(&config_path)
+        .expect("empty metadata should not error");
+
+    assert!(edges.is_empty());
+}
+
+#[test]
+fn malformed_agent_metadata_does_not_fail_full_hint_load() {
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path = write_custom_openclaw_config(
+        tempdir.path(),
+        relationship_config(json!([
+            { "id": "planner", "name": "Planner" },
+            { "id": "health-coach", "name": "Health Coach" },
+            { "id": "coder", "name": "Coder" }
+        ])),
+    )
+    .expect("write relationship config");
+    write_agent_file(
+        tempdir.path(),
+        "planner",
+        "AGENTS.md",
+        r#"
+### Works With
+- **Coder Agent**: For implementation details
+"#,
+    )
+    .expect("write planner AGENTS");
+    write_agent_file(
+        tempdir.path(),
+        "health-coach",
+        "agent.json",
+        "{ invalid json",
+    )
+    .expect("write invalid health-coach agent.json");
+
+    let edges = load_agent_relationship_hints_from_path(&config_path)
+        .expect("malformed metadata should be isolated");
+
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].source_id, "planner");
+    assert_eq!(edges[0].target_id, "coder");
+}
+
+#[test]
+fn metadata_parsing_can_be_disabled_by_config() {
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path = write_custom_openclaw_config(
+        tempdir.path(),
+        json!({
+            "gateway": {
+                "port": 18789,
+                "auth": { "token": "test-token" }
+            },
+            "daneel": {
+                "relationship_hints": {
+                    "enabled": false
+                }
+            },
+            "agents": {
+                "list": [
+                    { "id": "planner", "name": "Planner" },
+                    { "id": "coder", "name": "Coder" }
+                ]
+            }
+        }),
+    )
+    .expect("write disabled relationship config");
+    write_agent_file(
+        tempdir.path(),
+        "planner",
+        "AGENTS.md",
+        r#"
+### Works With
+- **Coder Agent**: For implementation details
+"#,
+    )
+    .expect("write planner AGENTS");
+
+    let edges = load_agent_relationship_hints_from_path(&config_path)
+        .expect("disabled metadata parsing should not error");
+
+    assert!(edges.is_empty());
+}
+
+#[test]
+fn mixed_markdown_and_config_hints_merge_without_duplicates() {
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path = write_custom_openclaw_config(
+        tempdir.path(),
+        relationship_config(json!([
+            {
+                "id": "planner",
+                "name": "Planner",
+                "subagents": {
+                    "allowAgents": ["coder", "calendar"]
+                }
+            },
+            { "id": "coder", "name": "Coder" },
+            { "id": "calendar", "name": "Calendar" }
+        ])),
+    )
+    .expect("write relationship config");
+    write_agent_file(
+        tempdir.path(),
+        "planner",
+        "AGENTS.md",
+        r#"
+### Works With
+- **Coder Agent**: For implementation details
+"#,
+    )
+    .expect("write planner AGENTS");
+
+    let edges = load_agent_relationship_hints_from_path(&config_path)
+        .expect("merge markdown and config hints");
+
+    assert_eq!(edges.len(), 2);
+    assert_eq!(edges[0].target_id, "calendar");
+    assert_eq!(edges[1].target_id, "coder");
+}
+
+#[tokio::test]
+#[serial]
+async fn list_agent_relationship_hints_reads_local_metadata_end_to_end() {
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path = write_custom_openclaw_config(
+        tempdir.path(),
+        relationship_config(json!([
+            { "id": "planner", "name": "Planner" },
+            { "id": "coder", "name": "Coder" },
+            { "id": "calendar", "name": "Calendar" }
+        ])),
+    )
+    .expect("write relationship config");
+    write_agent_file(
+        tempdir.path(),
+        "planner",
+        "AGENTS.md",
+        r#"
+### Works With
+- **Coder Agent**: For implementation details
+- **Calendar Agent**: For scheduling
+"#,
+    )
+    .expect("write planner AGENTS");
+    let _guard = EnvVarGuard::set(
+        "OPENCLAW_CONFIG_PATH",
+        config_path.to_str().expect("config path as utf-8"),
+    );
+
+    let edges = OpenClawAdapter
+        .list_agent_relationship_hints()
+        .await
+        .expect("list relationship hints through adapter");
+
+    assert_eq!(edges.len(), 2);
+    assert_eq!(edges[0].source_id, "planner");
+    assert_eq!(edges[0].target_id, "calendar");
+    assert!(
+        edges
+            .iter()
+            .all(|edge| edge.kind == AgentEdgeKind::MetadataHint)
+    );
 }

@@ -646,10 +646,14 @@ Allowed sources:
 Tests:
 
 - unit test: planner `Works With` content maps to collaboration edges
+- unit test: `Works With` content with multiple entries maps to deterministic, deduplicated relationship edges
 - unit test: health-coach config delegation hint maps to a relationship edge
+- unit test: unknown referenced agent names are ignored safely and do not create dangling hints
 - unit test: missing local metadata returns an empty set without error
-- unit test: malformed markdown or malformed config does not fail the full graph load
+- unit test: malformed markdown or malformed config for one agent does not fail the full hint load for other agents
 - unit test: metadata parsing can be disabled by config
+- unit test: mixed markdown and config hints merge without duplicate edges
+- integration test: `OpenClawAdapter::list_agent_relationship_hints()` reads temp local agent metadata end to end and returns shared-model edges only
 
 ---
 
