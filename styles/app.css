@@ -70,15 +70,17 @@
     border-radius: inherit;
     padding: 1px;
     background:
-      conic-gradient(
-        from 0deg,
-        rgba(255, 255, 255, 0.02) 0deg,
-        rgba(255, 255, 255, 0.02) 235deg,
-        rgba(252, 211, 77, 0.72) 270deg,
-        rgba(125, 211, 252, 0.62) 300deg,
-        rgba(255, 255, 255, 0.02) 335deg,
-        rgba(255, 255, 255, 0.02) 360deg
+      linear-gradient(
+        110deg,
+        rgba(255, 255, 255, 0.02) 0%,
+        rgba(255, 255, 255, 0.02) 38%,
+        rgba(252, 211, 77, 0.58) 48%,
+        rgba(125, 211, 252, 0.48) 52%,
+        rgba(255, 255, 255, 0.02) 62%,
+        rgba(255, 255, 255, 0.02) 100%
       );
+    background-size: 220% 100%;
+    background-position: 140% 50%;
     -webkit-mask:
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
@@ -87,8 +89,8 @@
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
     mask-composite: exclude;
-    animation: status-pill-border-sweep 3.6s linear infinite;
-    opacity: 0.92;
+    animation: status-pill-border-sweep 3.2s linear infinite;
+    opacity: 0.88;
   }
 
   .status-pill--connecting::after {
@@ -99,40 +101,41 @@
     background:
       linear-gradient(
         115deg,
-        transparent 30%,
-        rgba(255, 255, 255, 0.05) 42%,
-        rgba(255, 255, 255, 0.2) 50%,
-        rgba(125, 211, 252, 0.18) 56%,
-        transparent 70%
+        transparent 18%,
+        rgba(255, 255, 255, 0.015) 34%,
+        rgba(255, 255, 255, 0.055) 50%,
+        rgba(125, 211, 252, 0.035) 62%,
+        rgba(255, 255, 255, 0.012) 72%,
+        transparent 84%
       );
-    transform: translateX(-42%);
-    filter: blur(10px);
-    opacity: 0.45;
-    animation: status-pill-surface-sheen 2.8s ease-in-out infinite;
+    transform: translate3d(-10%, 0, 0) scaleX(1.02);
+    filter: blur(18px);
+    opacity: 0.12;
+    animation: status-pill-surface-sheen 6.8s ease-in-out infinite;
     pointer-events: none;
   }
 }
 
 @keyframes status-pill-border-sweep {
-  to {
-    transform: rotate(1turn);
+  0% {
+    background-position: 140% 50%;
+  }
+
+  100% {
+    background-position: -40% 50%;
   }
 }
 
 @keyframes status-pill-surface-sheen {
   0%,
   100% {
-    transform: translateX(-42%);
-    opacity: 0.16;
-  }
-
-  45% {
-    opacity: 0.42;
+    transform: translate3d(-10%, 0, 0) scaleX(1.02);
+    opacity: 0.045;
   }
 
   50% {
-    transform: translateX(42%);
-    opacity: 0.5;
+    transform: translate3d(10%, 0, 0) scaleX(1.05);
+    opacity: 0.09;
   }
 }
 
@@ -147,7 +150,7 @@
   }
 
   .status-pill--connecting::after {
-    opacity: 0.18;
-    transform: translateX(0);
+    opacity: 0.04;
+    transform: translate3d(0, 0, 0) scaleX(1.03);
   }
 }
