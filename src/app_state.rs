@@ -112,6 +112,8 @@ mod tests {
                 summary: "healthy".to_string(),
                 detail: self.name.to_string(),
                 gateway_url: "ws://127.0.0.1:18789/".to_string(),
+                protocol_version: Some(3),
+                state_version: Some(1),
                 uptime_ms: Some(1),
             })
         }
