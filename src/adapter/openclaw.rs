@@ -59,6 +59,16 @@ fn snapshot_bindings(payload: &Value) -> Result<&Vec<Value>, String> {
 }
 
 #[cfg(feature = "server")]
+fn snapshot_health(payload: &Value) -> Result<&serde_json::Map<String, Value>, String> {
+    payload
+        .get("snapshot")
+        .ok_or_else(|| "Gateway connect payload did not include a snapshot.".to_string())?
+        .get("health")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "Gateway snapshot did not include health.".to_string())
+}
+
+#[cfg(feature = "server")]
 fn map_heartbeat(agent: &Value) -> (bool, String) {
     let heartbeat = agent.get("heartbeat").unwrap_or(&Value::Null);
     let enabled = heartbeat
@@ -133,7 +143,9 @@ fn normalize_binding_edges(bindings: &[Value]) -> Result<Vec<AgentEdge>, String>
     edges.sort_by(|left, right| {
         (&left.source_id, &left.target_id).cmp(&(&right.source_id, &right.target_id))
     });
-    edges.dedup_by(|left, right| left.source_id == right.source_id && left.target_id == right.target_id);
+    edges.dedup_by(|left, right| {
+        left.source_id == right.source_id && left.target_id == right.target_id
+    });
     Ok(edges)
 }
 
@@ -173,13 +185,56 @@ fn map_active_session_record(
 
 #[cfg(feature = "server")]
 fn normalize_active_sessions(sessions: &[Value]) -> Result<Vec<ActiveSessionRecord>, String> {
-    let mut records: Vec<_> = sessions
+    let records: Vec<_> = sessions
         .iter()
         .map(|session| map_active_session_record(session, None))
         .collect::<Result<Vec<_>, _>>()?;
+    normalize_active_session_records(records)
+}
+
+#[cfg(feature = "server")]
+fn normalize_active_session_records(
+    mut records: Vec<ActiveSessionRecord>,
+) -> Result<Vec<ActiveSessionRecord>, String> {
     records.sort_by(|left, right| left.session_id.cmp(&right.session_id));
     records.dedup_by(|left, right| left.session_id == right.session_id);
     Ok(records)
+}
+
+#[cfg(feature = "server")]
+fn snapshot_active_sessions(payload: &Value) -> Result<Vec<ActiveSessionRecord>, String> {
+    let health = snapshot_health(payload)?;
+
+    if let Some(sessions) = health.get("activeSessions").and_then(Value::as_array) {
+        if !sessions.is_empty() {
+            return normalize_active_sessions(sessions);
+        }
+    }
+
+    let agents = health
+        .get("agents")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Gateway health snapshot did not include agents.".to_string())?;
+    let mut records = Vec::new();
+
+    for agent in agents {
+        let agent_id = agent
+            .get("agentId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "OpenClaw agent payload is missing agentId.".to_string())?;
+        let recent_sessions = agent
+            .get("sessions")
+            .and_then(|sessions| sessions.get("recent"))
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+
+        for session in recent_sessions {
+            records.push(map_active_session_record(&session, Some(agent_id))?);
+        }
+    }
+
+    normalize_active_session_records(records)
 }
 
 #[cfg(feature = "server")]
@@ -213,7 +268,13 @@ impl GatewayAdapter for OpenClawAdapter {
     }
 
     async fn list_active_sessions(&self) -> Result<Vec<ActiveSessionRecord>, String> {
-        not_implemented("list_active_sessions")
+        let config = load_gateway_config()?;
+        let (mut socket, connect_frame) =
+            connect_gateway(&config, "connect-list-active-sessions-1").await?;
+        let _ = socket.close(None).await;
+
+        let payload = require_payload(connect_frame.payload.as_ref(), "Gateway connect response")?;
+        snapshot_active_sessions(payload)
     }
 
     async fn list_agent_relationship_hints(&self) -> Result<Vec<AgentEdge>, String> {
@@ -381,6 +442,14 @@ mod tests {
         agents: serde_json::Value,
         bindings: serde_json::Value,
     ) -> serde_json::Value {
+        gateway_snapshot_payload_with_sessions(agents, bindings, json!([]))
+    }
+
+    fn gateway_snapshot_payload_with_sessions(
+        agents: serde_json::Value,
+        bindings: serde_json::Value,
+        sessions: serde_json::Value,
+    ) -> serde_json::Value {
         json!({
             "protocolVersion": 3,
             "stateVersion": 42,
@@ -388,7 +457,8 @@ mod tests {
             "snapshot": {
                 "health": {
                     "agents": agents,
-                    "bindings": bindings
+                    "bindings": bindings,
+                    "activeSessions": sessions
                 }
             }
         })
@@ -594,23 +664,42 @@ mod tests {
         assert_eq!(sessions[1].session_id, "session-2");
     }
 
+    #[test]
+    fn unknown_session_agent_references_still_map_safely() {
+        let session = map_active_session_record(
+            &json!({
+                "sessionId": "session-1",
+                "agentId": "ghost-agent",
+                "ageMs": 900
+            }),
+            None,
+        )
+        .expect("map session with unknown agent reference");
+
+        assert_eq!(session.agent_id, "ghost-agent");
+        assert_eq!(session.age_ms, Some(900));
+    }
+
     #[tokio::test]
     #[serial]
     async fn list_agents_reads_nodes_from_gateway_snapshot() {
-        let gateway = MockGateway::spawn(gateway_snapshot_payload(json!([
-            {
-                "agentId": "main",
-                "name": "Main",
-                "isDefault": true,
-                "heartbeat": {
-                    "enabled": true,
-                    "every": "15m"
+        let gateway = MockGateway::spawn(gateway_snapshot_payload(
+            json!([
+                {
+                    "agentId": "main",
+                    "name": "Main",
+                    "isDefault": true,
+                    "heartbeat": {
+                        "enabled": true,
+                        "every": "15m"
+                    }
+                },
+                {
+                    "agentId": "planner"
                 }
-            },
-            {
-                "agentId": "planner"
-            }
-        ]), json!([])))
+            ]),
+            json!([]),
+        ))
         .expect("spawn mock gateway");
         let tempdir = tempdir().expect("create tempdir");
         let config_path = write_openclaw_config(tempdir.path(), gateway.addr.port())
@@ -688,5 +777,90 @@ mod tests {
         assert_eq!(edges[1].target_id, "planner");
         assert_eq!(edges[0].kind, AgentEdgeKind::GatewayRouting);
         assert_eq!(edges[1].kind, AgentEdgeKind::GatewayRouting);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn list_active_sessions_reads_sessions_from_gateway_snapshot() {
+        let gateway = MockGateway::spawn(gateway_snapshot_payload_with_sessions(
+            json!([]),
+            json!([]),
+            json!([
+                { "sessionId": "session-2", "agentId": "calendar", "task": "check inbox", "ageMs": 600 },
+                { "sessionId": "session-1", "agentId": "planner", "ageMs": 500 },
+                { "sessionId": "session-1", "agentId": "planner", "ageMs": 400 },
+                { "sessionId": "session-3", "agentId": "ghost-agent", "ageMs": 900 }
+            ]),
+        ))
+        .expect("spawn mock gateway");
+        let tempdir = tempdir().expect("create tempdir");
+        let config_path = write_openclaw_config(tempdir.path(), gateway.addr.port())
+            .expect("write openclaw config");
+        let _guard = EnvVarGuard::set(
+            "OPENCLAW_CONFIG_PATH",
+            config_path.to_str().expect("config path as utf-8"),
+        );
+
+        let sessions = OpenClawAdapter
+            .list_active_sessions()
+            .await
+            .expect("list active sessions through gateway");
+
+        assert_eq!(sessions.len(), 3);
+        assert_eq!(sessions[0].session_id, "session-1");
+        assert_eq!(sessions[0].agent_id, "planner");
+        assert_eq!(sessions[0].age_ms, Some(500));
+        assert_eq!(sessions[1].session_id, "session-2");
+        assert_eq!(sessions[1].task.as_deref(), Some("check inbox"));
+        assert_eq!(sessions[2].agent_id, "ghost-agent");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn list_active_sessions_falls_back_to_agent_recent_entries() {
+        let gateway = MockGateway::spawn(gateway_snapshot_payload(
+            json!([
+                {
+                    "agentId": "planner",
+                    "sessions": {
+                        "recent": [
+                            { "key": "session-2", "age": 700 },
+                            { "key": "session-1", "age": 500 }
+                        ]
+                    }
+                },
+                {
+                    "agentId": "calendar",
+                    "sessions": {
+                        "recent": [
+                            { "key": "session-1", "age": 400 },
+                            { "key": "session-3", "task": "check inbox", "age": 300 }
+                        ]
+                    }
+                }
+            ]),
+            json!([]),
+        ))
+        .expect("spawn mock gateway");
+        let tempdir = tempdir().expect("create tempdir");
+        let config_path = write_openclaw_config(tempdir.path(), gateway.addr.port())
+            .expect("write openclaw config");
+        let _guard = EnvVarGuard::set(
+            "OPENCLAW_CONFIG_PATH",
+            config_path.to_str().expect("config path as utf-8"),
+        );
+
+        let sessions = OpenClawAdapter
+            .list_active_sessions()
+            .await
+            .expect("list fallback sessions through gateway");
+
+        assert_eq!(sessions.len(), 3);
+        assert_eq!(sessions[0].session_id, "session-1");
+        assert_eq!(sessions[0].agent_id, "planner");
+        assert_eq!(sessions[0].age_ms, Some(500));
+        assert_eq!(sessions[2].session_id, "session-3");
+        assert_eq!(sessions[2].agent_id, "calendar");
+        assert_eq!(sessions[2].task.as_deref(), Some("check inbox"));
     }
 }
