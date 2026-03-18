@@ -44,3 +44,110 @@
     text-decoration: none;
   }
 }
+
+@layer components {
+  .status-pill {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+
+  .status-pill > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .status-pill--connecting {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(148, 163, 184, 0.04)),
+      rgba(255, 255, 255, 0.04);
+  }
+
+  .status-pill--connecting::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background:
+      conic-gradient(
+        from 0deg,
+        rgba(255, 255, 255, 0.02) 0deg,
+        rgba(255, 255, 255, 0.02) 235deg,
+        rgba(252, 211, 77, 0.72) 270deg,
+        rgba(125, 211, 252, 0.62) 300deg,
+        rgba(255, 255, 255, 0.02) 335deg,
+        rgba(255, 255, 255, 0.02) 360deg
+      );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: status-pill-border-sweep 3.6s linear infinite;
+    opacity: 0.92;
+  }
+
+  .status-pill--connecting::after {
+    content: "";
+    position: absolute;
+    inset: -35%;
+    border-radius: inherit;
+    background:
+      linear-gradient(
+        115deg,
+        transparent 30%,
+        rgba(255, 255, 255, 0.05) 42%,
+        rgba(255, 255, 255, 0.2) 50%,
+        rgba(125, 211, 252, 0.18) 56%,
+        transparent 70%
+      );
+    transform: translateX(-42%);
+    filter: blur(10px);
+    opacity: 0.45;
+    animation: status-pill-surface-sheen 2.8s ease-in-out infinite;
+    pointer-events: none;
+  }
+}
+
+@keyframes status-pill-border-sweep {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@keyframes status-pill-surface-sheen {
+  0%,
+  100% {
+    transform: translateX(-42%);
+    opacity: 0.16;
+  }
+
+  45% {
+    opacity: 0.42;
+  }
+
+  50% {
+    transform: translateX(42%);
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-pill--connecting::before,
+  .status-pill--connecting::after {
+    animation: none;
+  }
+
+  .status-pill--connecting::before {
+    opacity: 0.65;
+  }
+
+  .status-pill--connecting::after {
+    opacity: 0.18;
+    transform: translateX(0);
+  }
+}

@@ -91,22 +91,22 @@ struct StatusPill {
 fn status_pill(level: OperatorConnectionState) -> StatusPill {
     match level {
         OperatorConnectionState::Connected => StatusPill {
-            class: "inline-flex items-center gap-3 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm font-medium text-emerald-100 shadow-[0_12px_32px_rgba(2,6,23,0.28)] backdrop-blur-xl",
+            class: "status-pill inline-flex items-center gap-3 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm font-medium text-emerald-100 shadow-[0_12px_32px_rgba(2,6,23,0.28)] backdrop-blur-xl",
             dot_class: "inline-block shrink-0 text-[1rem] leading-none text-emerald-300 drop-shadow-[0_0_8px_rgba(110,231,183,0.95)]",
             label: "Connected",
         },
         OperatorConnectionState::Degraded => StatusPill {
-            class: "inline-flex items-center gap-3 rounded-full border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm font-medium text-amber-100 shadow-[0_12px_32px_rgba(2,6,23,0.28)] backdrop-blur-xl",
+            class: "status-pill inline-flex items-center gap-3 rounded-full border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm font-medium text-amber-100 shadow-[0_12px_32px_rgba(2,6,23,0.28)] backdrop-blur-xl",
             dot_class: "inline-block shrink-0 text-[1rem] leading-none text-amber-300 drop-shadow-[0_0_8px_rgba(252,211,77,0.9)]",
             label: "Degraded",
         },
         OperatorConnectionState::Disconnected => StatusPill {
-            class: "inline-flex items-center gap-3 rounded-full border border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm font-medium text-rose-100 shadow-[0_12px_32px_rgba(2,6,23,0.28)] backdrop-blur-xl",
+            class: "status-pill inline-flex items-center gap-3 rounded-full border border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm font-medium text-rose-100 shadow-[0_12px_32px_rgba(2,6,23,0.28)] backdrop-blur-xl",
             dot_class: "inline-block shrink-0 text-[1rem] leading-none text-rose-300 drop-shadow-[0_0_8px_rgba(253,164,175,0.9)]",
             label: "Disconnected",
         },
         OperatorConnectionState::Connecting => StatusPill {
-            class: "inline-flex items-center gap-3 rounded-full border border-white/12 bg-white/6 px-4 py-3 text-sm font-medium text-slate-100 shadow-[0_12px_32px_rgba(2,6,23,0.28)] backdrop-blur-xl",
+            class: "status-pill status-pill--connecting inline-flex items-center gap-3 rounded-full border border-white/12 bg-white/6 px-4 py-3 text-sm font-medium text-slate-100 shadow-[0_12px_32px_rgba(2,6,23,0.28)] backdrop-blur-xl",
             dot_class: "inline-block shrink-0 text-[1rem] leading-none text-amber-300 drop-shadow-[0_0_8px_rgba(252,211,77,0.9)]",
             label: "Connecting",
         },
@@ -129,6 +129,13 @@ mod tests {
         let pill = status_pill(OperatorConnectionState::Connected);
 
         assert_eq!(pill.label, "Connected");
+    }
+
+    #[test]
+    fn connecting_pill_uses_connecting_animation_class() {
+        let pill = status_pill(OperatorConnectionState::Connecting);
+
+        assert!(pill.class.contains("status-pill--connecting"));
     }
 
     #[test]
