@@ -537,6 +537,28 @@ Supported integration areas:
 
 The adapter must not assume unsupported OpenClaw features such as custom task management workflows.
 
+## 11.1 Future Agent Relationship Discovery
+
+In a future iteration, Daneel may enrich the agents view with runtime relationship hints derived from agent-to-agent chat or coordination messages.
+
+This future capability should be treated as optional metadata enrichment rather than as authoritative gateway truth.
+
+Potential future relationship questions include:
+
+- which agents an agent is currently working with
+- which agent delegated work to it
+- which agent it is delegating work to
+
+Design guidance:
+
+- relationship discovery should use explicit structured prompts or message contracts rather than loose natural-language inference whenever possible
+- chat-derived relationship hints should be time-scoped and labeled as runtime-reported hints
+- chat-derived relationships must remain visually and semantically distinct from gateway-native bindings, routing relationships, and static local metadata
+- the system should tolerate missing, stale, or contradictory self-reports without breaking the graph or presenting them as guaranteed fact
+- if this capability is added, the adapter or service layer should normalize these reports into typed relationship models before the UI consumes them
+
+This should not be treated as a current OpenClaw capability requirement for the initial implementation.
+
 ---
 
 # 12. Device Pairing And Trust

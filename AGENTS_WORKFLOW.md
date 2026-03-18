@@ -69,6 +69,18 @@ Example:
 [T2.7] Make agent recency and heartbeat state update live
 ```
 
+Use the GitHub admin script directly for PR creation:
+
+```bash
+node scripts/github-admin.mjs create-pr --head <branch> --base main --title "[<Task tag>] Title" --issue <n> --body "<markdown>"
+```
+
+For approval hygiene, prefer approving this single reusable prefix once:
+
+```text
+node scripts/github-admin.mjs create-pr
+```
+
 11. Link the task to the merge request.
 
 12. Set the GitHub task status to `Ready for Merge`.

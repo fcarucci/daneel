@@ -5,6 +5,7 @@ mod app_state;
 mod client;
 mod components;
 mod gateway;
+mod graph_service;
 mod live;
 mod models;
 mod pages;
