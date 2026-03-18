@@ -59,13 +59,21 @@ fn resolved_live_level(
             GatewayLevel::Healthy => LiveGatewayLevel::Healthy,
             GatewayLevel::Degraded => LiveGatewayLevel::Degraded,
         });
+    let live_level = (live_gateway.live_status)().map(|event| event.level);
+    let preferred_level = preferred_gateway_level(live_level, gateway_level);
 
-    resolve_operator_connection_state(
-        (live_gateway.backend_state)(),
-        (live_gateway.live_status)()
-            .map(|event| event.level)
-            .or(gateway_level),
-    )
+    resolve_operator_connection_state((live_gateway.backend_state)(), preferred_level)
+}
+
+fn preferred_gateway_level(
+    live_level: Option<LiveGatewayLevel>,
+    gateway_level: Option<LiveGatewayLevel>,
+) -> Option<LiveGatewayLevel> {
+    match live_level {
+        Some(LiveGatewayLevel::Connecting) => gateway_level.or(Some(LiveGatewayLevel::Connecting)),
+        Some(level) => Some(level),
+        None => gateway_level,
+    }
 }
 
 struct StatusPill {
@@ -101,7 +109,7 @@ fn status_pill(level: OperatorConnectionState) -> StatusPill {
 
 #[cfg(test)]
 mod tests {
-    use super::{OperatorConnectionState, status_pill};
+    use super::{LiveGatewayLevel, OperatorConnectionState, preferred_gateway_level, status_pill};
 
     #[test]
     fn disconnected_pill_uses_disconnected_label() {
@@ -115,5 +123,25 @@ mod tests {
         let pill = status_pill(OperatorConnectionState::Connected);
 
         assert_eq!(pill.label, "Connected");
+    }
+
+    #[test]
+    fn connecting_live_level_yields_to_healthy_gateway_snapshot() {
+        let level = preferred_gateway_level(
+            Some(LiveGatewayLevel::Connecting),
+            Some(LiveGatewayLevel::Healthy),
+        );
+
+        assert!(matches!(level, Some(LiveGatewayLevel::Healthy)));
+    }
+
+    #[test]
+    fn disconnected_live_level_overrides_healthy_gateway_snapshot() {
+        let level = preferred_gateway_level(
+            Some(LiveGatewayLevel::Disconnected),
+            Some(LiveGatewayLevel::Healthy),
+        );
+
+        assert!(matches!(level, Some(LiveGatewayLevel::Disconnected)));
     }
 }

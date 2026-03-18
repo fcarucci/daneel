@@ -22,6 +22,7 @@ function parseArgs(argv) {
     forbidTexts: [],
     minLatestSessionCount: 0,
     fullPage: true,
+    waitConnected: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -61,6 +62,8 @@ function parseArgs(argv) {
     } else if (arg === "--min-latest-session-count") {
       options.minLatestSessionCount = Number.parseInt(next, 10);
       index += 1;
+    } else if (arg === "--wait-connected") {
+      options.waitConnected = true;
     } else if (arg === "--no-full-page") {
       options.fullPage = false;
     }
@@ -308,7 +311,7 @@ async function runGitHubAdmin(args) {
 
 async function waitForLiveRoute(page, options) {
   await page.waitForFunction(
-    ({ waitTexts, forbidTexts, minLatestSessionCount }) => {
+    ({ waitTexts, forbidTexts, minLatestSessionCount, waitConnected }) => {
       const body = document.body;
       if (!body) return false;
 
@@ -328,6 +331,10 @@ async function waitForLiveRoute(page, options) {
       const latestSessionCount = Array.from(document.querySelectorAll("p"))
         .map((node) => node.textContent?.trim() ?? "")
         .filter((content) => content.startsWith("Latest session:")).length;
+      const livePill = Array.from(document.querySelectorAll("[data-live]")).find(
+        (node) => node.textContent?.trim().length
+      );
+      const connectedReady = !waitConnected || livePill?.textContent?.trim() === "Connected";
 
       return (
         document.readyState === "complete" &&
@@ -335,13 +342,15 @@ async function waitForLiveRoute(page, options) {
         bodyStyled &&
         hasAllRequired &&
         !hasForbidden &&
-        latestSessionCount >= minLatestSessionCount
+        latestSessionCount >= minLatestSessionCount &&
+        connectedReady
       );
     },
     {
       waitTexts: options.waitTexts,
       forbidTexts: options.forbidTexts,
       minLatestSessionCount: options.minLatestSessionCount,
+      waitConnected: options.waitConnected,
     },
     { timeout: options.timeoutMs }
   );
