@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+async-trait = "0.1"
 dioxus = { version = "0.7.3", features = ["router", "fullstack"] }
 dioxus-server = { version = "0.7.3", optional = true }
 serde = { version = "1", features = ["derive"] }

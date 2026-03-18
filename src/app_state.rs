@@ -4,21 +4,19 @@
 use std::sync::OnceLock;
 
 #[cfg(feature = "server")]
+use crate::adapter::{GatewayAdapter, openclaw::OpenClawAdapter};
+#[cfg(feature = "server")]
 use crate::gateway::{LoadedGatewayConfig, load_gateway_config};
 
 #[cfg(feature = "server")]
-#[derive(Clone, Debug, Default)]
-pub struct OpenClawGatewayAdapter;
-
-#[cfg(feature = "server")]
 #[derive(Clone, Debug)]
-pub struct ServerAppState<A> {
+pub struct ServerAppState<A: GatewayAdapter> {
     gateway_config: LoadedGatewayConfig,
     adapter: A,
 }
 
 #[cfg(feature = "server")]
-impl<A> ServerAppState<A> {
+impl<A: GatewayAdapter> ServerAppState<A> {
     pub fn new(gateway_config: LoadedGatewayConfig, adapter: A) -> Self {
         Self {
             gateway_config,
@@ -44,7 +42,7 @@ impl<A> ServerAppState<A> {
 }
 
 #[cfg(feature = "server")]
-pub type DaneelAppState = ServerAppState<OpenClawGatewayAdapter>;
+pub type DaneelAppState = ServerAppState<OpenClawAdapter>;
 
 #[cfg(feature = "server")]
 static APP_STATE: OnceLock<Result<DaneelAppState, String>> = OnceLock::new();
@@ -59,12 +57,12 @@ pub fn warm_server_app_state() -> Result<&'static DaneelAppState, String> {
 #[cfg(feature = "server")]
 pub fn server_app_state() -> Result<&'static DaneelAppState, String> {
     cached_app_state(&APP_STATE, || {
-        DaneelAppState::from_loader(load_gateway_config, OpenClawGatewayAdapter)
+        DaneelAppState::from_loader(load_gateway_config, OpenClawAdapter)
     })
 }
 
 #[cfg(feature = "server")]
-fn cached_app_state<'a, A>(
+fn cached_app_state<'a, A: GatewayAdapter>(
     slot: &'a OnceLock<Result<ServerAppState<A>, String>>,
     init: impl FnOnce() -> Result<ServerAppState<A>, String>,
 ) -> Result<&'a ServerAppState<A>, String> {
@@ -88,12 +86,51 @@ mod tests {
         atomic::{AtomicUsize, Ordering},
     };
 
+    use async_trait::async_trait;
+
+    use crate::adapter::GatewayAdapter;
+    use crate::models::{
+        gateway::{GatewayLevel, GatewayStatusSnapshot},
+        graph::{AgentEdge, AgentNode},
+        runtime::ActiveSessionRecord,
+    };
+
     use super::ServerAppState;
     use crate::gateway::LoadedGatewayConfig;
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct MockAdapter {
         name: &'static str,
+    }
+
+    #[async_trait]
+    impl GatewayAdapter for MockAdapter {
+        async fn gateway_status(&self) -> Result<GatewayStatusSnapshot, String> {
+            Ok(GatewayStatusSnapshot {
+                connected: true,
+                level: GatewayLevel::Healthy,
+                summary: "healthy".to_string(),
+                detail: self.name.to_string(),
+                gateway_url: "ws://127.0.0.1:18789/".to_string(),
+                uptime_ms: Some(1),
+            })
+        }
+
+        async fn list_agents(&self) -> Result<Vec<AgentNode>, String> {
+            Ok(Vec::new())
+        }
+
+        async fn list_agent_bindings(&self) -> Result<Vec<AgentEdge>, String> {
+            Ok(Vec::new())
+        }
+
+        async fn list_active_sessions(&self) -> Result<Vec<ActiveSessionRecord>, String> {
+            Ok(Vec::new())
+        }
+
+        async fn list_agent_relationship_hints(&self) -> Result<Vec<AgentEdge>, String> {
+            Ok(Vec::new())
+        }
     }
 
     #[test]
