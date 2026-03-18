@@ -212,7 +212,9 @@ mod tests {
         connect_payload: &serde_json::Value,
     ) -> Result<(), String> {
         let mut socket = accept(stream).map_err(|error| format!("handshake failed: {error}"))?;
-        let message = socket.read().map_err(|error| format!("read request: {error}"))?;
+        let message = socket
+            .read()
+            .map_err(|error| format!("read request: {error}"))?;
         let Message::Text(text) = message else {
             return Err("expected text connect request".to_string());
         };
@@ -239,7 +241,10 @@ mod tests {
         Ok(())
     }
 
-    fn write_openclaw_config(tempdir: &std::path::Path, port: u16) -> Result<std::path::PathBuf, String> {
+    fn write_openclaw_config(
+        tempdir: &std::path::Path,
+        port: u16,
+    ) -> Result<std::path::PathBuf, String> {
         let config_path = tempdir.join("openclaw.json");
         fs::write(
             &config_path,
@@ -257,17 +262,15 @@ mod tests {
 
     #[test]
     fn openclaw_agent_json_maps_to_agent_node() {
-        let node = map_agent_node(
-            &json!({
-                "agentId": "planner",
-                "name": "Planner",
-                "isDefault": true,
-                "heartbeat": {
-                    "enabled": true,
-                    "every": "15m"
-                }
-            }),
-        )
+        let node = map_agent_node(&json!({
+            "agentId": "planner",
+            "name": "Planner",
+            "isDefault": true,
+            "heartbeat": {
+                "enabled": true,
+                "every": "15m"
+            }
+        }))
         .expect("map agent node");
 
         assert_eq!(node.id, "planner");
@@ -282,20 +285,18 @@ mod tests {
 
     #[test]
     fn unknown_fields_do_not_break_agent_mapping() {
-        let node = map_agent_node(
-            &json!({
-                "agentId": "calendar",
-                "name": "Calendar",
-                "heartbeat": {
-                    "enabled": true,
-                    "every": "30m",
-                    "model": "ignored-model"
-                },
-                "extra": {
-                    "nested": ["noise", 1, true]
-                }
-            }),
-        )
+        let node = map_agent_node(&json!({
+            "agentId": "calendar",
+            "name": "Calendar",
+            "heartbeat": {
+                "enabled": true,
+                "every": "30m",
+                "model": "ignored-model"
+            },
+            "extra": {
+                "nested": ["noise", 1, true]
+            }
+        }))
         .expect("map noisy agent node");
 
         assert_eq!(node.id, "calendar");
@@ -305,8 +306,8 @@ mod tests {
 
     #[test]
     fn missing_optional_fields_fall_back_safely() {
-        let node = map_agent_node(&json!({ "agentId": "health-coach" }))
-            .expect("map sparse agent node");
+        let node =
+            map_agent_node(&json!({ "agentId": "health-coach" })).expect("map sparse agent node");
 
         assert_eq!(node.id, "health-coach");
         assert_eq!(node.name, "health-coach");
@@ -316,6 +317,20 @@ mod tests {
         assert_eq!(node.active_session_count, 0);
         assert_eq!(node.latest_activity_age_ms, None);
         assert_eq!(node.status, AgentStatus::Unknown);
+    }
+
+    #[test]
+    fn missing_agent_id_returns_a_clear_error() {
+        let error = map_agent_node(&json!({
+            "name": "Broken Agent",
+            "heartbeat": {
+                "enabled": true,
+                "every": "5m"
+            }
+        }))
+        .expect_err("reject missing agent id");
+
+        assert!(error.contains("missing agentId"));
     }
 
     #[tokio::test]
