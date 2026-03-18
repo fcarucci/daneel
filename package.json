@@ -7,7 +7,8 @@
     "github:admin": "node scripts/github-admin.mjs",
     "verify:route": "node scripts/verify-route.mjs",
     "verify:live": "node scripts/verify-live.mjs",
-    "verify:live:upload": "node scripts/verify-live.mjs upload"
+    "verify:live:upload": "node scripts/verify-live.mjs upload",
+    "test:verify-live": "node --test scripts/verify-live.test.mjs"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.2.1",

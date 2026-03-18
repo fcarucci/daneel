@@ -2,8 +2,8 @@
 
 use dioxus::prelude::*;
 
+use crate::client::use_app_client;
 use crate::components::live_gateway::use_live_gateway;
-use crate::gateway::get_gateway_status;
 use crate::models::gateway::GatewayLevel;
 use crate::models::live_gateway::{
     LiveGatewayLevel, OperatorConnectionState, resolve_operator_connection_state,
@@ -11,7 +11,11 @@ use crate::models::live_gateway::{
 
 #[component]
 pub fn TopBar() -> Element {
-    let gateway_status = use_resource(|| async move { get_gateway_status().await });
+    let client = use_app_client();
+    let gateway_status = use_resource(move || {
+        let client = client.clone();
+        async move { client.get_gateway_status().await }
+    });
     let live_gateway = use_live_gateway();
 
     let pill = status_pill(resolved_live_level(&gateway_status, &live_gateway));
@@ -47,21 +51,35 @@ fn resolved_live_level(
     gateway_status: &Resource<Result<crate::models::gateway::GatewayStatusSnapshot, ServerFnError>>,
     live_gateway: &crate::components::live_gateway::LiveGatewayState,
 ) -> OperatorConnectionState {
-    let gateway_level = gateway_status
+    let gateway_level = gateway_level_from_status(gateway_status);
+    let live_level = (live_gateway.live_status)().map(|event| event.level);
+    let preferred_level = preferred_gateway_level(live_level, gateway_level);
+
+    resolve_operator_connection_state((live_gateway.backend_state)(), preferred_level)
+}
+
+fn gateway_level_from_status(
+    gateway_status: &Resource<Result<crate::models::gateway::GatewayStatusSnapshot, ServerFnError>>,
+) -> Option<LiveGatewayLevel> {
+    gateway_status
         .read_unchecked()
         .as_ref()
         .and_then(|value| value.as_ref().ok())
         .map(|snapshot| match snapshot.level {
             GatewayLevel::Healthy => LiveGatewayLevel::Healthy,
             GatewayLevel::Degraded => LiveGatewayLevel::Degraded,
-        });
+        })
+}
 
-    resolve_operator_connection_state(
-        (live_gateway.backend_state)(),
-        (live_gateway.live_status)()
-            .map(|event| event.level)
-            .or(gateway_level),
-    )
+fn preferred_gateway_level(
+    live_level: Option<LiveGatewayLevel>,
+    gateway_level: Option<LiveGatewayLevel>,
+) -> Option<LiveGatewayLevel> {
+    match live_level {
+        Some(LiveGatewayLevel::Connecting) => gateway_level.or(Some(LiveGatewayLevel::Connecting)),
+        Some(level) => Some(level),
+        None => gateway_level,
+    }
 }
 
 struct StatusPill {
@@ -97,7 +115,7 @@ fn status_pill(level: OperatorConnectionState) -> StatusPill {
 
 #[cfg(test)]
 mod tests {
-    use super::{OperatorConnectionState, status_pill};
+    use super::{LiveGatewayLevel, OperatorConnectionState, preferred_gateway_level, status_pill};
 
     #[test]
     fn disconnected_pill_uses_disconnected_label() {
@@ -111,5 +129,25 @@ mod tests {
         let pill = status_pill(OperatorConnectionState::Connected);
 
         assert_eq!(pill.label, "Connected");
+    }
+
+    #[test]
+    fn connecting_live_level_yields_to_healthy_gateway_snapshot() {
+        let level = preferred_gateway_level(
+            Some(LiveGatewayLevel::Connecting),
+            Some(LiveGatewayLevel::Healthy),
+        );
+
+        assert!(matches!(level, Some(LiveGatewayLevel::Healthy)));
+    }
+
+    #[test]
+    fn disconnected_live_level_overrides_healthy_gateway_snapshot() {
+        let level = preferred_gateway_level(
+            Some(LiveGatewayLevel::Disconnected),
+            Some(LiveGatewayLevel::Healthy),
+        );
+
+        assert!(matches!(level, Some(LiveGatewayLevel::Disconnected)));
     }
 }

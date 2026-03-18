@@ -6,9 +6,10 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = {
     url: "http://127.0.0.1:4127/",
     screenshot: "/tmp/daneel-live.png",
@@ -16,12 +17,13 @@ function parseArgs(argv) {
     video: "",
     timeoutMs: 40_000,
     viewport: "1600,1400",
-    browserPath: "",
+    browserPath: "/usr/bin/google-chrome",
     title: "Daneel",
     waitTexts: [],
     forbidTexts: [],
     minLatestSessionCount: 0,
     fullPage: true,
+    waitConnected: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -61,6 +63,8 @@ function parseArgs(argv) {
     } else if (arg === "--min-latest-session-count") {
       options.minLatestSessionCount = Number.parseInt(next, 10);
       index += 1;
+    } else if (arg === "--wait-connected") {
+      options.waitConnected = true;
     } else if (arg === "--no-full-page") {
       options.fullPage = false;
     }
@@ -69,7 +73,7 @@ function parseArgs(argv) {
   return options;
 }
 
-function parseCommand(argv) {
+export function parseCommand(argv) {
   const [maybeCommand, ...rest] = argv;
   if (maybeCommand === "verify" || maybeCommand === "upload") {
     return { command: maybeCommand, argv: rest };
@@ -78,7 +82,7 @@ function parseCommand(argv) {
   return { command: "verify", argv };
 }
 
-function parseViewport(value) {
+export function parseViewport(value) {
   const [width, height] = value
     .split(",")
     .map((entry) => Number.parseInt(entry, 10));
@@ -87,6 +91,14 @@ function parseViewport(value) {
   }
 
   return { width, height };
+}
+
+function launchBrowser(browserPath) {
+  return chromium.launch({
+    executablePath: browserPath || undefined,
+    headless: true,
+    args: ["--no-sandbox", "--disable-gpu"],
+  });
 }
 
 async function ensureParentDir(filePath) {
@@ -102,7 +114,7 @@ function replaceExtension(filePath, extension) {
   return `${filePath.slice(0, -currentExtension.length)}${extension}`;
 }
 
-function resolveVideoOutputPath(requestedVideoPath) {
+export function resolveVideoOutputPath(requestedVideoPath) {
   if (!requestedVideoPath) {
     return "";
   }
@@ -118,12 +130,12 @@ function resolveVideoOutputPath(requestedVideoPath) {
   return path.join("videos", requestedVideoPath);
 }
 
-function routeSlugFromUrl(url) {
+export function routeSlugFromUrl(url) {
   const pathname = new URL(url).pathname.replace(/^\/+|\/+$/g, "");
   return pathname ? pathname.replace(/[^a-zA-Z0-9]+/g, "-") : "home";
 }
 
-function timestampStamp(date = new Date()) {
+export function timestampStamp(date = new Date()) {
   const pad = (value) => String(value).padStart(2, "0");
   return (
     `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_` +
@@ -131,7 +143,7 @@ function timestampStamp(date = new Date()) {
   );
 }
 
-function uniquifyPathWithRouteAndTime(filePath, url) {
+export function uniquifyPathWithRouteAndTime(filePath, url) {
   const extension = path.extname(filePath);
   const directory = path.dirname(filePath);
   const uniqueName = `${routeSlugFromUrl(url)}_${timestampStamp()}${extension}`;
@@ -208,7 +220,7 @@ async function persistRecordedVideo(recordedVideoPath, requestedVideoPath, url) 
   return resolvedVideoPath;
 }
 
-function parseUploadArgs(argv) {
+export function parseUploadArgs(argv) {
   const options = {
     video: "",
     tag: "verification-artifacts",
@@ -308,7 +320,7 @@ async function runGitHubAdmin(args) {
 
 async function waitForLiveRoute(page, options) {
   await page.waitForFunction(
-    ({ waitTexts, forbidTexts, minLatestSessionCount }) => {
+    ({ waitTexts, forbidTexts, minLatestSessionCount, waitConnected }) => {
       const body = document.body;
       if (!body) return false;
 
@@ -328,6 +340,10 @@ async function waitForLiveRoute(page, options) {
       const latestSessionCount = Array.from(document.querySelectorAll("p"))
         .map((node) => node.textContent?.trim() ?? "")
         .filter((content) => content.startsWith("Latest session:")).length;
+      const livePill = Array.from(document.querySelectorAll("[data-live]")).find(
+        (node) => node.textContent?.trim().length
+      );
+      const connectedReady = !waitConnected || livePill?.textContent?.trim() === "Connected";
 
       return (
         document.readyState === "complete" &&
@@ -335,13 +351,15 @@ async function waitForLiveRoute(page, options) {
         bodyStyled &&
         hasAllRequired &&
         !hasForbidden &&
-        latestSessionCount >= minLatestSessionCount
+        latestSessionCount >= minLatestSessionCount &&
+        connectedReady
       );
     },
     {
       waitTexts: options.waitTexts,
       forbidTexts: options.forbidTexts,
       minLatestSessionCount: options.minLatestSessionCount,
+      waitConnected: options.waitConnected,
     },
     { timeout: options.timeoutMs }
   );
@@ -363,12 +381,22 @@ async function captureSummary(page) {
   });
 }
 
-async function verifyRoute(argv) {
+function buildVerificationResult(options, summary, persistedVideoPath) {
+  return {
+    verified: true,
+    url: options.url,
+    screenshot: options.screenshot,
+    dom: options.dom,
+    video: persistedVideoPath,
+    title: summary.title,
+    latestSessionCount: summary.latestSessionCount,
+    connectedRibbonPresent: summary.connectedRibbonPresent,
+  };
+}
+
+export async function verifyRoute(argv) {
   const options = parseArgs(argv);
-  const browser = await chromium.launch({
-    executablePath: options.browserPath || undefined,
-    headless: true,
-  });
+  const browser = await launchBrowser(options.browserPath);
 
   try {
     const viewport = parseViewport(options.viewport);
@@ -409,28 +437,13 @@ async function verifyRoute(argv) {
         ? await persistRecordedVideo(recordedVideoPath, options.video, options.url)
         : null;
 
-    process.stdout.write(
-      JSON.stringify(
-        {
-          verified: true,
-          url: options.url,
-          screenshot: options.screenshot,
-          dom: options.dom,
-          video: persistedVideoPath,
-          title: summary.title,
-          latestSessionCount: summary.latestSessionCount,
-          connectedRibbonPresent: summary.connectedRibbonPresent,
-        },
-        null,
-        2
-      ) + "\n"
-    );
+    return buildVerificationResult(options, summary, persistedVideoPath);
   } finally {
     await browser.close();
   }
 }
 
-async function uploadVideo(argv) {
+export async function uploadVideo(argv) {
   const options = parseUploadArgs(argv);
   if (!options.video) {
     throw new Error("upload requires --video <path>.");
@@ -483,32 +496,31 @@ async function uploadVideo(argv) {
     ]);
   }
 
-  process.stdout.write(
-    JSON.stringify(
-      {
-        uploaded: true,
-        video: resolvedVideoPath,
-        release: uploadResult.release,
-        asset: uploadResult.asset,
-        prComment,
-      },
-      null,
-      2
-    ) + "\n"
-  );
+  return {
+    uploaded: true,
+    video: resolvedVideoPath,
+    release: uploadResult.release,
+    asset: uploadResult.asset,
+    prComment,
+  };
 }
 
-async function main() {
-  const { command, argv } = parseCommand(process.argv.slice(2));
+export async function main(argv = process.argv.slice(2)) {
+  const { command, argv: commandArgs } = parseCommand(argv);
   if (command === "upload") {
-    await uploadVideo(argv);
+    const result = await uploadVideo(commandArgs);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
   }
 
-  await verifyRoute(argv);
+  const result = await verifyRoute(commandArgs);
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error.stack ?? error.message}\n`);
-  process.exit(1);
-});
+const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
+if (invokedPath === import.meta.url) {
+  main().catch((error) => {
+    process.stderr.write(`${error.stack ?? error.message}\n`);
+    process.exit(1);
+  });
+}

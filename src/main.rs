@@ -2,6 +2,7 @@
 
 mod adapter;
 mod app_state;
+mod client;
 mod components;
 mod gateway;
 mod live;
@@ -34,6 +35,8 @@ fn main() {
 
 #[component]
 fn App() -> Element {
+    use_context_provider(crate::client::AppClientHandle::default);
+
     rsx! {
         document::Link { rel: "stylesheet", href: asset!("/assets/main.css") }
         Router::<router::Route> {}

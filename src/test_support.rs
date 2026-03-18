@@ -6,10 +6,13 @@ use dioxus::prelude::*;
 use dioxus_history::{History, MemoryHistory};
 use dioxus_router::components::HistoryProvider;
 
+use crate::client::AppClientHandle;
 use crate::router::Route;
 
 #[component]
 fn RouteHarness(path: String) -> Element {
+    use_context_provider(AppClientHandle::default);
+
     rsx! {
         document::Link { rel: "stylesheet", href: asset!("/assets/main.css") }
         HistoryProvider {
