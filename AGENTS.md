@@ -183,6 +183,8 @@ For pull request creation, use the existing GitHub admin script directly:
 node scripts/github-admin.mjs create-pr --head <branch> --base main --title "[<Task tag>] Title" --issue <n> --body "<markdown>"
 ```
 
+Prefer the direct `node scripts/github-admin.mjs ...` form over npm wrappers for GitHub operations. In this environment that direct node command is the stable approved path and should be used to avoid unnecessary approval friction.
+
 For Codex approval hygiene, prefer the narrow reusable command prefix:
 
 ```text

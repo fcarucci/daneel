@@ -75,6 +75,8 @@ Use the GitHub admin script directly for PR creation:
 node scripts/github-admin.mjs create-pr --head <branch> --base main --title "[<Task tag>] Title" --issue <n> --body "<markdown>"
 ```
 
+Do not route this through an npm wrapper. In this repo the direct `node scripts/github-admin.mjs ...` command is the intended shortcut and should be preferred to avoid repeated approval prompts.
+
 For approval hygiene, prefer approving this single reusable prefix once:
 
 ```text
