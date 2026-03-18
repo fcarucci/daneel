@@ -22,7 +22,7 @@ pub(crate) use config::LoadedGatewayConfig;
 pub(crate) use config::{DEFAULT_GATEWAY_URL, load_gateway_config};
 
 #[cfg(feature = "server")]
-pub(crate) use ws::{connect_request, wait_for_response};
+pub(crate) use ws::{connect_gateway, connect_request, wait_for_response};
 
 #[server(endpoint = "gateway/status")]
 pub async fn get_gateway_status() -> Result<GatewayStatusSnapshot, ServerFnError> {

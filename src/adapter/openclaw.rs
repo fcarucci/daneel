@@ -8,6 +8,7 @@ use serde_json::Value;
 #[cfg(feature = "server")]
 use crate::{
     adapter::GatewayAdapter,
+    gateway::{connect_gateway, load_gateway_config},
     models::{
         gateway::GatewayStatusSnapshot,
         graph::{AgentEdge, AgentNode, AgentStatus},
@@ -74,7 +75,26 @@ impl GatewayAdapter for OpenClawAdapter {
     }
 
     async fn list_agents(&self) -> Result<Vec<AgentNode>, String> {
-        not_implemented("list_agents")
+        let config = load_gateway_config()?;
+        let (mut socket, connect_frame) = connect_gateway(&config, "connect-list-agents-1").await?;
+        let _ = socket.close(None).await;
+
+        let payload = connect_frame
+            .payload
+            .ok_or_else(|| "Gateway connect response did not include a payload.".to_string())?;
+        let snapshot = payload
+            .get("snapshot")
+            .ok_or_else(|| "Gateway connect payload did not include a snapshot.".to_string())?;
+        let health = snapshot
+            .get("health")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "Gateway snapshot did not include health.".to_string())?;
+        let agents = health
+            .get("agents")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "Gateway health snapshot did not include agents.".to_string())?;
+
+        agents.iter().map(map_agent_node).collect()
     }
 
     async fn list_agent_bindings(&self) -> Result<Vec<AgentEdge>, String> {
@@ -92,11 +112,148 @@ impl GatewayAdapter for OpenClawAdapter {
 
 #[cfg(all(test, feature = "server"))]
 mod tests {
+    use std::{
+        env, fs,
+        net::{SocketAddr, TcpListener, TcpStream},
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        thread,
+        time::Duration,
+    };
+
     use serde_json::json;
+    use serial_test::serial;
+    use tempfile::tempdir;
+    use tungstenite::{Message, accept};
 
-    use crate::models::graph::AgentStatus;
+    use crate::{adapter::GatewayAdapter, models::graph::AgentStatus};
 
-    use super::map_agent_node;
+    use super::{OpenClawAdapter, map_agent_node};
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = env::var(key).ok();
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(previous) => unsafe { env::set_var(self.key, previous) },
+                None => unsafe { env::remove_var(self.key) },
+            }
+        }
+    }
+
+    struct MockGateway {
+        addr: SocketAddr,
+        stop: Arc<AtomicBool>,
+        thread: Option<thread::JoinHandle<()>>,
+    }
+
+    impl MockGateway {
+        fn spawn(connect_payload: serde_json::Value) -> Result<Self, String> {
+            let listener = TcpListener::bind(("127.0.0.1", 0))
+                .map_err(|error| format!("bind mock gateway: {error}"))?;
+            let addr = listener
+                .local_addr()
+                .map_err(|error| format!("mock gateway local_addr: {error}"))?;
+            listener
+                .set_nonblocking(true)
+                .map_err(|error| format!("mock gateway set_nonblocking: {error}"))?;
+
+            let stop = Arc::new(AtomicBool::new(false));
+            let stop_flag = Arc::clone(&stop);
+            let handle = thread::spawn(move || {
+                while !stop_flag.load(Ordering::Relaxed) {
+                    match listener.accept() {
+                        Ok((stream, _)) => {
+                            let _ = handle_gateway_client(stream, &connect_payload);
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            thread::sleep(Duration::from_millis(25));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+
+            Ok(Self {
+                addr,
+                stop,
+                thread: Some(handle),
+            })
+        }
+    }
+
+    impl Drop for MockGateway {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::Relaxed);
+            let _ = TcpStream::connect(self.addr);
+            if let Some(handle) = self.thread.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    fn handle_gateway_client(
+        stream: TcpStream,
+        connect_payload: &serde_json::Value,
+    ) -> Result<(), String> {
+        let mut socket = accept(stream).map_err(|error| format!("handshake failed: {error}"))?;
+        let message = socket.read().map_err(|error| format!("read request: {error}"))?;
+        let Message::Text(text) = message else {
+            return Err("expected text connect request".to_string());
+        };
+        let request: serde_json::Value =
+            serde_json::from_str(&text).map_err(|error| format!("parse request: {error}"))?;
+        let id = request
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("connect-test");
+
+        socket
+            .send(Message::Text(
+                json!({
+                    "type": "res",
+                    "id": id,
+                    "ok": true,
+                    "payload": connect_payload,
+                })
+                .to_string()
+                .into(),
+            ))
+            .map_err(|error| format!("send response: {error}"))?;
+
+        Ok(())
+    }
+
+    fn write_openclaw_config(tempdir: &std::path::Path, port: u16) -> Result<std::path::PathBuf, String> {
+        let config_path = tempdir.join("openclaw.json");
+        fs::write(
+            &config_path,
+            serde_json::to_vec_pretty(&json!({
+                "gateway": {
+                    "port": port,
+                    "auth": { "token": "test-token" }
+                }
+            }))
+            .expect("serialize config"),
+        )
+        .map_err(|error| format!("write config: {error}"))?;
+        Ok(config_path)
+    }
 
     #[test]
     fn openclaw_agent_json_maps_to_agent_node() {
@@ -159,5 +316,54 @@ mod tests {
         assert_eq!(node.active_session_count, 0);
         assert_eq!(node.latest_activity_age_ms, None);
         assert_eq!(node.status, AgentStatus::Unknown);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn list_agents_reads_nodes_from_gateway_snapshot() {
+        let gateway = MockGateway::spawn(json!({
+            "protocolVersion": 3,
+            "stateVersion": 42,
+            "uptimeMs": 123_456,
+            "snapshot": {
+                "health": {
+                    "agents": [
+                        {
+                            "agentId": "main",
+                            "name": "Main",
+                            "isDefault": true,
+                            "heartbeat": {
+                                "enabled": true,
+                                "every": "15m"
+                            }
+                        },
+                        {
+                            "agentId": "planner"
+                        }
+                    ]
+                }
+            }
+        }))
+        .expect("spawn mock gateway");
+        let tempdir = tempdir().expect("create tempdir");
+        let config_path = write_openclaw_config(tempdir.path(), gateway.addr.port())
+            .expect("write openclaw config");
+        let _guard = EnvVarGuard::set(
+            "OPENCLAW_CONFIG_PATH",
+            config_path.to_str().expect("config path as utf-8"),
+        );
+
+        let agents = OpenClawAdapter
+            .list_agents()
+            .await
+            .expect("list agents through gateway");
+
+        assert_eq!(agents.len(), 2);
+        assert_eq!(agents[0].id, "main");
+        assert_eq!(agents[0].name, "Main");
+        assert!(agents[0].is_default);
+        assert_eq!(agents[0].heartbeat_schedule, "15m");
+        assert_eq!(agents[1].id, "planner");
+        assert_eq!(agents[1].name, "planner");
     }
 }
