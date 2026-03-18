@@ -693,13 +693,14 @@ Purpose:
 
 Output:
 
-- edge kinds such as `routes_to`, `broadcast_group_peer`, or `config_link`
-- optional edge kinds such as `works_with` or `delegates_to_hint`
+- a small, justified edge-kind set for the POC
+- one gateway-native kind: `routes_to`
+- two metadata-derived hint kinds: `works_with_hint` and `delegates_to_hint`
 
 Tests:
 
-- unit test: each input binding type maps to a valid edge kind
-- review test: no edge is labeled `delegates_to` unless backed by real adapter data
+- unit test: gateway-native bindings map to `routes_to` for the POC
+- review test: no edge is labeled `delegates_to_hint` unless backed by real delegation metadata
 - review test: metadata-derived hints are visually distinguished from gateway-native relationships
 - unit test: edge priority rules prefer gateway-native edges over metadata hints when both exist
 

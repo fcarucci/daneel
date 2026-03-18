@@ -17,8 +17,9 @@ pub enum AgentStatus {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentEdgeKind {
-    GatewayRouting,
-    MetadataHint,
+    RoutesTo,
+    WorksWithHint,
+    DelegatesToHint,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -76,7 +77,7 @@ mod tests {
         let edge = AgentEdge {
             source_id: "source-agent".to_string(),
             target_id: "target-agent".to_string(),
-            kind: AgentEdgeKind::GatewayRouting,
+            kind: AgentEdgeKind::RoutesTo,
         };
 
         let json = serde_json::to_string(&edge).unwrap();
@@ -101,7 +102,7 @@ mod tests {
             edges: vec![AgentEdge {
                 source_id: "test-agent".to_string(),
                 target_id: "other-agent".to_string(),
-                kind: AgentEdgeKind::MetadataHint,
+                kind: AgentEdgeKind::WorksWithHint,
             }],
             snapshot_ts: 1640995200000,
         };
@@ -129,29 +130,42 @@ mod tests {
     }
 
     #[test]
-    fn gateway_routing_edge_serializes_distinctly() {
+    fn routes_to_edge_serializes_distinctly() {
         let edge = AgentEdge {
             source_id: "source".to_string(),
             target_id: "target".to_string(),
-            kind: AgentEdgeKind::GatewayRouting,
+            kind: AgentEdgeKind::RoutesTo,
         };
 
         let json = serde_json::to_string(&edge).unwrap();
-        assert!(json.contains("gateway_routing"));
-        assert!(!json.contains("metadata_hint"));
+        assert!(json.contains("routes_to"));
+        assert!(!json.contains("works_with_hint"));
     }
 
     #[test]
-    fn metadata_hint_edge_serializes_distinctly() {
+    fn works_with_hint_edge_serializes_distinctly() {
         let edge = AgentEdge {
             source_id: "source".to_string(),
             target_id: "target".to_string(),
-            kind: AgentEdgeKind::MetadataHint,
+            kind: AgentEdgeKind::WorksWithHint,
         };
 
         let json = serde_json::to_string(&edge).unwrap();
-        assert!(json.contains("metadata_hint"));
-        assert!(!json.contains("gateway_routing"));
+        assert!(json.contains("works_with_hint"));
+        assert!(!json.contains("routes_to"));
+    }
+
+    #[test]
+    fn delegates_to_hint_edge_serializes_distinctly() {
+        let edge = AgentEdge {
+            source_id: "source".to_string(),
+            target_id: "target".to_string(),
+            kind: AgentEdgeKind::DelegatesToHint,
+        };
+
+        let json = serde_json::to_string(&edge).unwrap();
+        assert!(json.contains("delegates_to_hint"));
+        assert!(!json.contains("works_with_hint"));
     }
 
     #[test]

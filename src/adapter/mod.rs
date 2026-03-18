@@ -59,7 +59,7 @@ mod tests {
         AgentEdge {
             source_id: "main".to_string(),
             target_id: "planner".to_string(),
-            kind: AgentEdgeKind::GatewayRouting,
+            kind: AgentEdgeKind::RoutesTo,
         }
     }
 
@@ -67,7 +67,7 @@ mod tests {
         AgentEdge {
             source_id: "main".to_string(),
             target_id: "planner".to_string(),
-            kind: AgentEdgeKind::MetadataHint,
+            kind: AgentEdgeKind::WorksWithHint,
         }
     }
 
