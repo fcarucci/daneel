@@ -20,7 +20,8 @@ fn ClientProviderRoot(client: AppClientHandle) -> Element {
 }
 
 fn render_with_client(client: AppClientHandle) -> String {
-    let mut dom = VirtualDom::new_with_props(ClientProviderRoot, ClientProviderRootProps { client });
+    let mut dom =
+        VirtualDom::new_with_props(ClientProviderRoot, ClientProviderRootProps { client });
     dom.rebuild_in_place();
     dioxus_ssr::render(&dom)
 }
