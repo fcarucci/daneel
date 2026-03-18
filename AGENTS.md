@@ -177,6 +177,12 @@ There is also an npm alias:
 npm run github:admin -- help
 ```
 
+For pull request creation, use the existing GitHub admin script directly:
+
+```bash
+node scripts/github-admin.mjs create-pr --head <branch> --base main --title "[<Task tag>] Title" --issue <n> --body "<markdown>"
+```
+
 For Codex approval hygiene, prefer the narrow reusable command prefix:
 
 ```text
@@ -184,6 +190,12 @@ node scripts/github-admin.mjs
 ```
 
 That keeps future GitHub admin actions under a single predictable command instead of repeated approvals for generic scripting commands.
+
+For PR creation specifically, approve this reusable prefix once if your client supports persistent approvals:
+
+```text
+node scripts/github-admin.mjs create-pr
+```
 
 ## Run Commands
 
