@@ -676,6 +676,12 @@ Tests:
 - unit test: local relationship hints merge into the graph without duplicating binding edges
 - unit test: edge ordering is deterministic for stable rendering and snapshots
 - unit test: orphan edges are dropped or marked safely
+- unit test: empty adapter data produces a valid empty snapshot without panicking
+- unit test: unknown session agent references do not create phantom nodes and do not crash graph assembly
+- unit test: metadata-derived edges do not duplicate gateway-native edges when source and target match
+- unit test: node ordering is deterministic even when adapter results arrive in different input orders
+- unit test: graph summary values match the assembled nodes, edges, and active-agent count
+- integration test: graph assembly against a mock adapter combines agents, bindings, sessions, and hints into one stable snapshot
 
 ---
 
