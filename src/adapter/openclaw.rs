@@ -46,6 +46,19 @@ fn snapshot_agents(payload: &Value) -> Result<&Vec<Value>, String> {
 }
 
 #[cfg(feature = "server")]
+fn snapshot_bindings(payload: &Value) -> Result<&Vec<Value>, String> {
+    payload
+        .get("snapshot")
+        .ok_or_else(|| "Gateway connect payload did not include a snapshot.".to_string())?
+        .get("health")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "Gateway snapshot did not include health.".to_string())?
+        .get("bindings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Gateway health snapshot did not include bindings.".to_string())
+}
+
+#[cfg(feature = "server")]
 fn map_heartbeat(agent: &Value) -> (bool, String) {
     let heartbeat = agent.get("heartbeat").unwrap_or(&Value::Null);
     let enabled = heartbeat
@@ -112,6 +125,19 @@ fn map_binding_edge(binding: &Value) -> Result<AgentEdge, String> {
 }
 
 #[cfg(feature = "server")]
+fn normalize_binding_edges(bindings: &[Value]) -> Result<Vec<AgentEdge>, String> {
+    let mut edges: Vec<_> = bindings
+        .iter()
+        .map(map_binding_edge)
+        .collect::<Result<Vec<_>, _>>()?;
+    edges.sort_by(|left, right| {
+        (&left.source_id, &left.target_id).cmp(&(&right.source_id, &right.target_id))
+    });
+    edges.dedup_by(|left, right| left.source_id == right.source_id && left.target_id == right.target_id);
+    Ok(edges)
+}
+
+#[cfg(feature = "server")]
 #[async_trait]
 impl GatewayAdapter for OpenClawAdapter {
     async fn gateway_status(&self) -> Result<GatewayStatusSnapshot, String> {
@@ -130,7 +156,15 @@ impl GatewayAdapter for OpenClawAdapter {
     }
 
     async fn list_agent_bindings(&self) -> Result<Vec<AgentEdge>, String> {
-        not_implemented("list_agent_bindings")
+        let config = load_gateway_config()?;
+        let (mut socket, connect_frame) =
+            connect_gateway(&config, "connect-list-bindings-1").await?;
+        let _ = socket.close(None).await;
+
+        let payload = require_payload(connect_frame.payload.as_ref(), "Gateway connect response")?;
+        let bindings = snapshot_bindings(payload)?;
+
+        normalize_binding_edges(bindings)
     }
 
     async fn list_active_sessions(&self) -> Result<Vec<ActiveSessionRecord>, String> {
@@ -165,7 +199,7 @@ mod tests {
         models::graph::{AgentEdgeKind, AgentStatus},
     };
 
-    use super::{OpenClawAdapter, map_agent_node, map_binding_edge};
+    use super::{OpenClawAdapter, map_agent_node, map_binding_edge, normalize_binding_edges};
 
     struct EnvVarGuard {
         key: &'static str,
@@ -295,14 +329,18 @@ mod tests {
         Ok(config_path)
     }
 
-    fn gateway_snapshot_payload(agents: serde_json::Value) -> serde_json::Value {
+    fn gateway_snapshot_payload(
+        agents: serde_json::Value,
+        bindings: serde_json::Value,
+    ) -> serde_json::Value {
         json!({
             "protocolVersion": 3,
             "stateVersion": 42,
             "uptimeMs": 123_456,
             "snapshot": {
                 "health": {
-                    "agents": agents
+                    "agents": agents,
+                    "bindings": bindings
                 }
             }
         })
@@ -411,7 +449,7 @@ mod tests {
             {
                 "agentId": "planner"
             }
-        ])))
+        ]), json!([])))
         .expect("spawn mock gateway");
         let tempdir = tempdir().expect("create tempdir");
         let config_path = write_openclaw_config(tempdir.path(), gateway.addr.port())
@@ -433,5 +471,61 @@ mod tests {
         assert_eq!(agents[0].heartbeat_schedule, "15m");
         assert_eq!(agents[1].id, "planner");
         assert_eq!(agents[1].name, "planner");
+    }
+
+    #[test]
+    fn empty_bindings_normalize_to_empty_edges() {
+        let edges = normalize_binding_edges(&[]).expect("normalize empty bindings");
+        assert!(edges.is_empty());
+    }
+
+    #[test]
+    fn duplicate_bindings_are_normalized_deterministically() {
+        let edges = normalize_binding_edges(&[
+            json!({ "sourceAgentId": "main", "targetAgentId": "planner" }),
+            json!({ "sourceAgentId": "main", "targetAgentId": "planner", "bindingType": "routes_to" }),
+            json!({ "sourceAgentId": "calendar", "targetAgentId": "main" }),
+        ])
+        .expect("normalize duplicate bindings");
+
+        assert_eq!(edges.len(), 2);
+        assert_eq!(edges[0].source_id, "calendar");
+        assert_eq!(edges[0].target_id, "main");
+        assert_eq!(edges[1].source_id, "main");
+        assert_eq!(edges[1].target_id, "planner");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn list_agent_bindings_reads_edges_from_gateway_snapshot() {
+        let gateway = MockGateway::spawn(gateway_snapshot_payload(
+            json!([]),
+            json!([
+                { "sourceAgentId": "main", "targetAgentId": "planner" },
+                { "sourceAgentId": "calendar", "targetAgentId": "main" },
+                { "sourceAgentId": "main", "targetAgentId": "planner", "bindingType": "routes_to" }
+            ]),
+        ))
+        .expect("spawn mock gateway");
+        let tempdir = tempdir().expect("create tempdir");
+        let config_path = write_openclaw_config(tempdir.path(), gateway.addr.port())
+            .expect("write openclaw config");
+        let _guard = EnvVarGuard::set(
+            "OPENCLAW_CONFIG_PATH",
+            config_path.to_str().expect("config path as utf-8"),
+        );
+
+        let edges = OpenClawAdapter
+            .list_agent_bindings()
+            .await
+            .expect("list bindings through gateway");
+
+        assert_eq!(edges.len(), 2);
+        assert_eq!(edges[0].source_id, "calendar");
+        assert_eq!(edges[0].target_id, "main");
+        assert_eq!(edges[1].source_id, "main");
+        assert_eq!(edges[1].target_id, "planner");
+        assert_eq!(edges[0].kind, AgentEdgeKind::GatewayRouting);
+        assert_eq!(edges[1].kind, AgentEdgeKind::GatewayRouting);
     }
 }
