@@ -17,22 +17,28 @@ pub struct GraphAssemblySummary {
     pub edge_count: usize,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GraphAssemblyInputs {
+    pub agents: Vec<AgentNode>,
+    pub gateway_edges: Vec<AgentEdge>,
+    pub active_sessions: Vec<ActiveSessionRecord>,
+    pub hint_edges: Vec<AgentEdge>,
+}
+
 pub fn assemble_graph_snapshot(
-    agents: Vec<AgentNode>,
-    gateway_edges: Vec<AgentEdge>,
-    active_sessions: Vec<ActiveSessionRecord>,
-    hint_edges: Vec<AgentEdge>,
+    inputs: GraphAssemblyInputs,
     snapshot_ts: u64,
 ) -> AgentGraphSnapshot {
-    let mut nodes_by_id = agents
+    let mut nodes_by_id = inputs
+        .agents
         .into_iter()
         .map(|node| (node.id.clone(), node))
         .collect::<BTreeMap<_, _>>();
 
-    apply_active_sessions(&mut nodes_by_id, active_sessions);
+    apply_active_sessions(&mut nodes_by_id, inputs.active_sessions);
 
     let known_ids = nodes_by_id.keys().cloned().collect::<BTreeSet<_>>();
-    let edges = normalize_edges(&known_ids, gateway_edges, hint_edges);
+    let edges = normalize_edges(&known_ids, inputs.gateway_edges, inputs.hint_edges);
 
     AgentGraphSnapshot {
         nodes: nodes_by_id.into_values().collect(),
@@ -66,10 +72,12 @@ pub async fn load_graph_snapshot(
     )?;
 
     Ok(assemble_graph_snapshot(
-        agents,
-        gateway_edges,
-        active_sessions,
-        hint_edges,
+        GraphAssemblyInputs {
+            agents,
+            gateway_edges,
+            active_sessions,
+            hint_edges,
+        },
         snapshot_ts,
     ))
 }
@@ -196,7 +204,7 @@ mod tests {
 
     #[cfg(feature = "server")]
     use super::load_graph_snapshot;
-    use super::{assemble_graph_snapshot, summarize_graph_snapshot};
+    use super::{GraphAssemblyInputs, assemble_graph_snapshot, summarize_graph_snapshot};
     use crate::models::{
         graph::{AgentEdge, AgentEdgeKind, AgentNode, AgentStatus},
         runtime::ActiveSessionRecord,
@@ -246,9 +254,26 @@ mod tests {
         }
     }
 
+    fn assembly_inputs(
+        agents: Vec<AgentNode>,
+        gateway_edges: Vec<AgentEdge>,
+        active_sessions: Vec<ActiveSessionRecord>,
+        hint_edges: Vec<AgentEdge>,
+    ) -> GraphAssemblyInputs {
+        GraphAssemblyInputs {
+            agents,
+            gateway_edges,
+            active_sessions,
+            hint_edges,
+        }
+    }
+
     #[test]
     fn empty_adapter_data_produces_valid_empty_snapshot_without_panicking() {
-        let snapshot = assemble_graph_snapshot(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 42);
+        let snapshot = assemble_graph_snapshot(
+            assembly_inputs(Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+            42,
+        );
 
         assert!(snapshot.nodes.is_empty());
         assert!(snapshot.edges.is_empty());
@@ -258,13 +283,15 @@ mod tests {
     #[test]
     fn agents_and_bindings_create_expected_node_and_edge_counts() {
         let snapshot = assemble_graph_snapshot(
-            vec![
-                agent("planner", Some(10_000), 0, AgentStatus::Idle),
-                agent("coder", None, 0, AgentStatus::Unknown),
-            ],
-            vec![edge("planner", "coder", AgentEdgeKind::GatewayRouting)],
-            Vec::new(),
-            Vec::new(),
+            assembly_inputs(
+                vec![
+                    agent("planner", Some(10_000), 0, AgentStatus::Idle),
+                    agent("coder", None, 0, AgentStatus::Unknown),
+                ],
+                vec![edge("planner", "coder", AgentEdgeKind::GatewayRouting)],
+                Vec::new(),
+                Vec::new(),
+            ),
             10,
         );
 
@@ -275,16 +302,18 @@ mod tests {
     #[test]
     fn active_sessions_decorate_node_status_correctly() {
         let snapshot = assemble_graph_snapshot(
-            vec![
-                agent("planner", Some(50_000), 0, AgentStatus::Idle),
-                agent("coder", None, 0, AgentStatus::Unknown),
-            ],
-            Vec::new(),
-            vec![
-                active_session("session-1", "planner", Some(500)),
-                active_session("session-2", "planner", Some(1_000)),
-            ],
-            Vec::new(),
+            assembly_inputs(
+                vec![
+                    agent("planner", Some(50_000), 0, AgentStatus::Idle),
+                    agent("coder", None, 0, AgentStatus::Unknown),
+                ],
+                Vec::new(),
+                vec![
+                    active_session("session-1", "planner", Some(500)),
+                    active_session("session-2", "planner", Some(1_000)),
+                ],
+                Vec::new(),
+            ),
             11,
         );
 
@@ -299,17 +328,19 @@ mod tests {
     #[test]
     fn local_relationship_hints_merge_without_duplicating_gateway_edges() {
         let snapshot = assemble_graph_snapshot(
-            vec![
-                agent("planner", Some(10_000), 0, AgentStatus::Idle),
-                agent("coder", Some(20_000), 0, AgentStatus::Idle),
-                agent("calendar", Some(30_000), 0, AgentStatus::Idle),
-            ],
-            vec![edge("planner", "coder", AgentEdgeKind::GatewayRouting)],
-            Vec::new(),
-            vec![
-                edge("planner", "coder", AgentEdgeKind::MetadataHint),
-                edge("planner", "calendar", AgentEdgeKind::MetadataHint),
-            ],
+            assembly_inputs(
+                vec![
+                    agent("planner", Some(10_000), 0, AgentStatus::Idle),
+                    agent("coder", Some(20_000), 0, AgentStatus::Idle),
+                    agent("calendar", Some(30_000), 0, AgentStatus::Idle),
+                ],
+                vec![edge("planner", "coder", AgentEdgeKind::GatewayRouting)],
+                Vec::new(),
+                vec![
+                    edge("planner", "coder", AgentEdgeKind::MetadataHint),
+                    edge("planner", "calendar", AgentEdgeKind::MetadataHint),
+                ],
+            ),
             12,
         );
 
@@ -327,17 +358,19 @@ mod tests {
     #[test]
     fn edge_ordering_is_deterministic_for_stable_snapshots() {
         let snapshot = assemble_graph_snapshot(
-            vec![
-                agent("calendar", Some(30_000), 0, AgentStatus::Idle),
-                agent("planner", Some(10_000), 0, AgentStatus::Idle),
-                agent("coder", Some(20_000), 0, AgentStatus::Idle),
-            ],
-            vec![
-                edge("planner", "coder", AgentEdgeKind::GatewayRouting),
-                edge("coder", "calendar", AgentEdgeKind::GatewayRouting),
-            ],
-            Vec::new(),
-            vec![edge("planner", "calendar", AgentEdgeKind::MetadataHint)],
+            assembly_inputs(
+                vec![
+                    agent("calendar", Some(30_000), 0, AgentStatus::Idle),
+                    agent("planner", Some(10_000), 0, AgentStatus::Idle),
+                    agent("coder", Some(20_000), 0, AgentStatus::Idle),
+                ],
+                vec![
+                    edge("planner", "coder", AgentEdgeKind::GatewayRouting),
+                    edge("coder", "calendar", AgentEdgeKind::GatewayRouting),
+                ],
+                Vec::new(),
+                vec![edge("planner", "calendar", AgentEdgeKind::MetadataHint)],
+            ),
             13,
         );
 
@@ -362,17 +395,19 @@ mod tests {
     #[test]
     fn orphan_edges_are_dropped_safely() {
         let snapshot = assemble_graph_snapshot(
-            vec![
-                agent("planner", Some(10_000), 0, AgentStatus::Idle),
-                agent("coder", Some(20_000), 0, AgentStatus::Idle),
-            ],
-            vec![
-                edge("planner", "ghost", AgentEdgeKind::GatewayRouting),
-                edge("planner", "coder", AgentEdgeKind::GatewayRouting),
-                edge("planner", "planner", AgentEdgeKind::GatewayRouting),
-            ],
-            Vec::new(),
-            vec![edge("ghost", "coder", AgentEdgeKind::MetadataHint)],
+            assembly_inputs(
+                vec![
+                    agent("planner", Some(10_000), 0, AgentStatus::Idle),
+                    agent("coder", Some(20_000), 0, AgentStatus::Idle),
+                ],
+                vec![
+                    edge("planner", "ghost", AgentEdgeKind::GatewayRouting),
+                    edge("planner", "coder", AgentEdgeKind::GatewayRouting),
+                    edge("planner", "planner", AgentEdgeKind::GatewayRouting),
+                ],
+                Vec::new(),
+                vec![edge("ghost", "coder", AgentEdgeKind::MetadataHint)],
+            ),
             14,
         );
 
@@ -385,10 +420,12 @@ mod tests {
     #[test]
     fn unknown_session_agent_references_do_not_create_phantom_nodes_or_crash_graph_assembly() {
         let snapshot = assemble_graph_snapshot(
-            vec![agent("planner", Some(10_000), 0, AgentStatus::Idle)],
-            Vec::new(),
-            vec![active_session("session-1", "ghost", Some(100))],
-            Vec::new(),
+            assembly_inputs(
+                vec![agent("planner", Some(10_000), 0, AgentStatus::Idle)],
+                Vec::new(),
+                vec![active_session("session-1", "ghost", Some(100))],
+                Vec::new(),
+            ),
             15,
         );
 
@@ -401,25 +438,29 @@ mod tests {
     #[test]
     fn node_ordering_is_deterministic_even_when_adapter_inputs_are_shuffled() {
         let left = assemble_graph_snapshot(
-            vec![
-                agent("planner", Some(10_000), 0, AgentStatus::Idle),
-                agent("coder", Some(20_000), 0, AgentStatus::Idle),
-                agent("calendar", Some(30_000), 0, AgentStatus::Idle),
-            ],
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
+            assembly_inputs(
+                vec![
+                    agent("planner", Some(10_000), 0, AgentStatus::Idle),
+                    agent("coder", Some(20_000), 0, AgentStatus::Idle),
+                    agent("calendar", Some(30_000), 0, AgentStatus::Idle),
+                ],
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            ),
             16,
         );
         let right = assemble_graph_snapshot(
-            vec![
-                agent("calendar", Some(30_000), 0, AgentStatus::Idle),
-                agent("planner", Some(10_000), 0, AgentStatus::Idle),
-                agent("coder", Some(20_000), 0, AgentStatus::Idle),
-            ],
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
+            assembly_inputs(
+                vec![
+                    agent("calendar", Some(30_000), 0, AgentStatus::Idle),
+                    agent("planner", Some(10_000), 0, AgentStatus::Idle),
+                    agent("coder", Some(20_000), 0, AgentStatus::Idle),
+                ],
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            ),
             16,
         );
 
@@ -429,13 +470,15 @@ mod tests {
     #[test]
     fn graph_summary_values_match_the_assembled_snapshot() {
         let snapshot = assemble_graph_snapshot(
-            vec![
-                agent("planner", Some(10_000), 0, AgentStatus::Idle),
-                agent("coder", None, 0, AgentStatus::Unknown),
-            ],
-            vec![edge("planner", "coder", AgentEdgeKind::GatewayRouting)],
-            vec![active_session("session-1", "planner", Some(100))],
-            Vec::new(),
+            assembly_inputs(
+                vec![
+                    agent("planner", Some(10_000), 0, AgentStatus::Idle),
+                    agent("coder", None, 0, AgentStatus::Unknown),
+                ],
+                vec![edge("planner", "coder", AgentEdgeKind::GatewayRouting)],
+                vec![active_session("session-1", "planner", Some(100))],
+                Vec::new(),
+            ),
             17,
         );
 
