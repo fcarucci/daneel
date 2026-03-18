@@ -172,6 +172,17 @@ fn map_active_session_record(
 }
 
 #[cfg(feature = "server")]
+fn normalize_active_sessions(sessions: &[Value]) -> Result<Vec<ActiveSessionRecord>, String> {
+    let mut records: Vec<_> = sessions
+        .iter()
+        .map(|session| map_active_session_record(session, None))
+        .collect::<Result<Vec<_>, _>>()?;
+    records.sort_by(|left, right| left.session_id.cmp(&right.session_id));
+    records.dedup_by(|left, right| left.session_id == right.session_id);
+    Ok(records)
+}
+
+#[cfg(feature = "server")]
 #[async_trait]
 impl GatewayAdapter for OpenClawAdapter {
     async fn gateway_status(&self) -> Result<GatewayStatusSnapshot, String> {
@@ -235,7 +246,7 @@ mod tests {
 
     use super::{
         OpenClawAdapter, map_active_session_record, map_agent_node, map_binding_edge,
-        normalize_binding_edges,
+        normalize_active_sessions, normalize_binding_edges,
     };
 
     struct EnvVarGuard {
@@ -487,6 +498,100 @@ mod tests {
         assert_eq!(session.agent_id, "planner");
         assert_eq!(session.task.as_deref(), Some("plan route"));
         assert_eq!(session.age_ms, Some(500));
+    }
+
+    #[test]
+    fn multiple_sessions_for_different_agents_map_correctly() {
+        let sessions = [
+            map_active_session_record(
+                &json!({
+                    "sessionId": "session-1",
+                    "agentId": "planner",
+                    "ageMs": 500
+                }),
+                None,
+            )
+            .expect("map planner session"),
+            map_active_session_record(
+                &json!({
+                    "sessionId": "session-2",
+                    "agentId": "calendar",
+                    "task": "check inbox",
+                    "age": 250
+                }),
+                None,
+            )
+            .expect("map calendar session"),
+        ];
+
+        assert_eq!(sessions[0].agent_id, "planner");
+        assert_eq!(sessions[0].age_ms, Some(500));
+        assert_eq!(sessions[1].agent_id, "calendar");
+        assert_eq!(sessions[1].task.as_deref(), Some("check inbox"));
+        assert_eq!(sessions[1].age_ms, Some(250));
+    }
+
+    #[test]
+    fn missing_optional_session_fields_fall_back_safely() {
+        let session = map_active_session_record(
+            &json!({
+                "sessionId": "session-1",
+                "agentId": "planner"
+            }),
+            None,
+        )
+        .expect("map sparse session");
+
+        assert_eq!(session.session_id, "session-1");
+        assert_eq!(session.agent_id, "planner");
+        assert_eq!(session.task, None);
+        assert_eq!(session.age_ms, None);
+    }
+
+    #[test]
+    fn unknown_session_fields_do_not_break_mapping() {
+        let session = map_active_session_record(
+            &json!({
+                "sessionId": "session-1",
+                "agentId": "planner",
+                "task": "plan route",
+                "extra": { "nested": true }
+            }),
+            None,
+        )
+        .expect("map noisy session");
+
+        assert_eq!(session.session_id, "session-1");
+        assert_eq!(session.agent_id, "planner");
+        assert_eq!(session.task.as_deref(), Some("plan route"));
+    }
+
+    #[test]
+    fn missing_required_session_identity_returns_a_clear_error() {
+        let error = map_active_session_record(
+            &json!({
+                "sessionId": "session-1"
+            }),
+            None,
+        )
+        .expect_err("reject session without agent id");
+
+        assert!(error.contains("missing agentId"));
+    }
+
+    #[test]
+    fn duplicate_session_ids_are_normalized_deterministically() {
+        let sessions = normalize_active_sessions(&[
+            json!({ "sessionId": "session-2", "agentId": "calendar", "ageMs": 600 }),
+            json!({ "sessionId": "session-1", "agentId": "planner", "ageMs": 500 }),
+            json!({ "sessionId": "session-1", "agentId": "planner", "ageMs": 400 }),
+        ])
+        .expect("normalize duplicate sessions");
+
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(sessions[0].session_id, "session-1");
+        assert_eq!(sessions[0].age_ms, Some(500));
+        assert_eq!(sessions[1].session_id, "session-2");
     }
 
     #[tokio::test]
