@@ -92,6 +92,26 @@ fn map_agent_node(agent: &Value) -> Result<AgentNode, String> {
 }
 
 #[cfg(feature = "server")]
+fn map_binding_edge(binding: &Value) -> Result<AgentEdge, String> {
+    let source_id = binding
+        .get("sourceAgentId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "OpenClaw binding payload is missing sourceAgentId.".to_string())?
+        .to_string();
+    let target_id = binding
+        .get("targetAgentId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "OpenClaw binding payload is missing targetAgentId.".to_string())?
+        .to_string();
+
+    Ok(AgentEdge {
+        source_id,
+        target_id,
+        kind: crate::models::graph::AgentEdgeKind::GatewayRouting,
+    })
+}
+
+#[cfg(feature = "server")]
 #[async_trait]
 impl GatewayAdapter for OpenClawAdapter {
     async fn gateway_status(&self) -> Result<GatewayStatusSnapshot, String> {
@@ -140,9 +160,12 @@ mod tests {
     use tempfile::tempdir;
     use tungstenite::{Message, accept};
 
-    use crate::{adapter::GatewayAdapter, models::graph::AgentStatus};
+    use crate::{
+        adapter::GatewayAdapter,
+        models::graph::{AgentEdgeKind, AgentStatus},
+    };
 
-    use super::{OpenClawAdapter, map_agent_node};
+    use super::{OpenClawAdapter, map_agent_node, map_binding_edge};
 
     struct EnvVarGuard {
         key: &'static str,
@@ -356,6 +379,20 @@ mod tests {
         .expect_err("reject missing agent id");
 
         assert!(error.contains("missing agentId"));
+    }
+
+    #[test]
+    fn binding_payload_maps_to_gateway_routing_edge() {
+        let edge = map_binding_edge(&json!({
+            "sourceAgentId": "main",
+            "targetAgentId": "planner",
+            "bindingType": "routes_to"
+        }))
+        .expect("map binding edge");
+
+        assert_eq!(edge.source_id, "main");
+        assert_eq!(edge.target_id, "planner");
+        assert_eq!(edge.kind, AgentEdgeKind::GatewayRouting);
     }
 
     #[tokio::test]
