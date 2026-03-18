@@ -33,13 +33,17 @@ fn require_payload<'a>(payload: Option<&'a Value>, context: &str) -> Result<&'a 
 }
 
 #[cfg(feature = "server")]
+async fn fetch_connect_payload(request_id: &str) -> Result<Value, String> {
+    let config = load_gateway_config()?;
+    let (mut socket, connect_frame) = connect_gateway(&config, request_id).await?;
+    let _ = socket.close(None).await;
+
+    require_payload(connect_frame.payload.as_ref(), "Gateway connect response").cloned()
+}
+
+#[cfg(feature = "server")]
 fn snapshot_agents(payload: &Value) -> Result<&Vec<Value>, String> {
-    payload
-        .get("snapshot")
-        .ok_or_else(|| "Gateway connect payload did not include a snapshot.".to_string())?
-        .get("health")
-        .and_then(Value::as_object)
-        .ok_or_else(|| "Gateway snapshot did not include health.".to_string())?
+    snapshot_health(payload)?
         .get("agents")
         .and_then(Value::as_array)
         .ok_or_else(|| "Gateway health snapshot did not include agents.".to_string())
@@ -47,12 +51,7 @@ fn snapshot_agents(payload: &Value) -> Result<&Vec<Value>, String> {
 
 #[cfg(feature = "server")]
 fn snapshot_bindings(payload: &Value) -> Result<&Vec<Value>, String> {
-    payload
-        .get("snapshot")
-        .ok_or_else(|| "Gateway connect payload did not include a snapshot.".to_string())?
-        .get("health")
-        .and_then(Value::as_object)
-        .ok_or_else(|| "Gateway snapshot did not include health.".to_string())?
+    snapshot_health(payload)?
         .get("bindings")
         .and_then(Value::as_array)
         .ok_or_else(|| "Gateway health snapshot did not include bindings.".to_string())
@@ -202,15 +201,17 @@ fn normalize_active_session_records(
 }
 
 #[cfg(feature = "server")]
-fn snapshot_active_sessions(payload: &Value) -> Result<Vec<ActiveSessionRecord>, String> {
-    let health = snapshot_health(payload)?;
+fn explicit_active_sessions(health: &serde_json::Map<String, Value>) -> Option<&Vec<Value>> {
+    health
+        .get("activeSessions")
+        .and_then(Value::as_array)
+        .filter(|sessions| !sessions.is_empty())
+}
 
-    if let Some(sessions) = health.get("activeSessions").and_then(Value::as_array) {
-        if !sessions.is_empty() {
-            return normalize_active_sessions(sessions);
-        }
-    }
-
+#[cfg(feature = "server")]
+fn fallback_recent_active_sessions(
+    health: &serde_json::Map<String, Value>,
+) -> Result<Vec<ActiveSessionRecord>, String> {
     let agents = health
         .get("agents")
         .and_then(Value::as_array)
@@ -238,6 +239,17 @@ fn snapshot_active_sessions(payload: &Value) -> Result<Vec<ActiveSessionRecord>,
 }
 
 #[cfg(feature = "server")]
+fn snapshot_active_sessions(payload: &Value) -> Result<Vec<ActiveSessionRecord>, String> {
+    let health = snapshot_health(payload)?;
+
+    if let Some(sessions) = explicit_active_sessions(health) {
+        return normalize_active_sessions(sessions);
+    }
+
+    fallback_recent_active_sessions(health)
+}
+
+#[cfg(feature = "server")]
 #[async_trait]
 impl GatewayAdapter for OpenClawAdapter {
     async fn gateway_status(&self) -> Result<GatewayStatusSnapshot, String> {
@@ -245,36 +257,22 @@ impl GatewayAdapter for OpenClawAdapter {
     }
 
     async fn list_agents(&self) -> Result<Vec<AgentNode>, String> {
-        let config = load_gateway_config()?;
-        let (mut socket, connect_frame) = connect_gateway(&config, "connect-list-agents-1").await?;
-        let _ = socket.close(None).await;
-
-        let payload = require_payload(connect_frame.payload.as_ref(), "Gateway connect response")?;
-        let agents = snapshot_agents(payload)?;
+        let payload = fetch_connect_payload("connect-list-agents-1").await?;
+        let agents = snapshot_agents(&payload)?;
 
         agents.iter().map(map_agent_node).collect()
     }
 
     async fn list_agent_bindings(&self) -> Result<Vec<AgentEdge>, String> {
-        let config = load_gateway_config()?;
-        let (mut socket, connect_frame) =
-            connect_gateway(&config, "connect-list-bindings-1").await?;
-        let _ = socket.close(None).await;
-
-        let payload = require_payload(connect_frame.payload.as_ref(), "Gateway connect response")?;
-        let bindings = snapshot_bindings(payload)?;
+        let payload = fetch_connect_payload("connect-list-bindings-1").await?;
+        let bindings = snapshot_bindings(&payload)?;
 
         normalize_binding_edges(bindings)
     }
 
     async fn list_active_sessions(&self) -> Result<Vec<ActiveSessionRecord>, String> {
-        let config = load_gateway_config()?;
-        let (mut socket, connect_frame) =
-            connect_gateway(&config, "connect-list-active-sessions-1").await?;
-        let _ = socket.close(None).await;
-
-        let payload = require_payload(connect_frame.payload.as_ref(), "Gateway connect response")?;
-        snapshot_active_sessions(payload)
+        let payload = fetch_connect_payload("connect-list-active-sessions-1").await?;
+        snapshot_active_sessions(&payload)
     }
 
     async fn list_agent_relationship_hints(&self) -> Result<Vec<AgentEdge>, String> {
