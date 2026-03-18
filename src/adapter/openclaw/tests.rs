@@ -291,7 +291,7 @@ fn missing_agent_id_returns_a_clear_error() {
 }
 
 #[test]
-fn binding_payload_maps_to_gateway_routing_edge() {
+fn routes_to_binding_payload_maps_to_routes_to_edge() {
     let edge = map_binding_edge(&json!({
         "sourceAgentId": "main",
         "targetAgentId": "planner",
@@ -301,7 +301,31 @@ fn binding_payload_maps_to_gateway_routing_edge() {
 
     assert_eq!(edge.source_id, "main");
     assert_eq!(edge.target_id, "planner");
-    assert_eq!(edge.kind, AgentEdgeKind::GatewayRouting);
+    assert_eq!(edge.kind, AgentEdgeKind::RoutesTo);
+}
+
+#[test]
+fn broadcast_group_peer_binding_payload_maps_to_routes_to_edge_for_the_poc() {
+    let edge = map_binding_edge(&json!({
+        "sourceAgentId": "calendar",
+        "targetAgentId": "email",
+        "bindingType": "broadcast_group_peer"
+    }))
+    .expect("map broadcast-group binding edge");
+
+    assert_eq!(edge.kind, AgentEdgeKind::RoutesTo);
+}
+
+#[test]
+fn config_link_binding_payload_maps_to_routes_to_edge_for_the_poc() {
+    let edge = map_binding_edge(&json!({
+        "sourceAgentId": "health-coach",
+        "targetAgentId": "coder",
+        "bindingType": "config_link"
+    }))
+    .expect("map config-link binding edge");
+
+    assert_eq!(edge.kind, AgentEdgeKind::RoutesTo);
 }
 
 #[test]
@@ -528,8 +552,8 @@ async fn list_agent_bindings_reads_edges_from_gateway_snapshot() {
     assert_eq!(edges[0].target_id, "main");
     assert_eq!(edges[1].source_id, "main");
     assert_eq!(edges[1].target_id, "planner");
-    assert_eq!(edges[0].kind, AgentEdgeKind::GatewayRouting);
-    assert_eq!(edges[1].kind, AgentEdgeKind::GatewayRouting);
+    assert_eq!(edges[0].kind, AgentEdgeKind::RoutesTo);
+    assert_eq!(edges[1].kind, AgentEdgeKind::RoutesTo);
 }
 
 #[tokio::test]
@@ -655,7 +679,7 @@ fn planner_works_with_content_maps_to_collaboration_edges() {
     assert!(
         edges
             .iter()
-            .all(|edge| edge.kind == AgentEdgeKind::MetadataHint)
+            .all(|edge| edge.kind == AgentEdgeKind::WorksWithHint)
     );
 }
 
@@ -721,7 +745,7 @@ fn health_coach_config_delegation_hint_maps_to_relationship_edge() {
     assert_eq!(edges.len(), 1);
     assert_eq!(edges[0].source_id, "health-coach");
     assert_eq!(edges[0].target_id, "coder");
-    assert_eq!(edges[0].kind, AgentEdgeKind::MetadataHint);
+    assert_eq!(edges[0].kind, AgentEdgeKind::DelegatesToHint);
 }
 
 #[test]
@@ -752,6 +776,7 @@ fn unknown_referenced_agent_names_are_ignored_safely() {
 
     assert_eq!(edges.len(), 1);
     assert_eq!(edges[0].target_id, "coder");
+    assert_eq!(edges[0].kind, AgentEdgeKind::WorksWithHint);
 }
 
 #[test]
@@ -808,6 +833,7 @@ fn malformed_agent_metadata_does_not_fail_full_hint_load() {
     assert_eq!(edges.len(), 1);
     assert_eq!(edges[0].source_id, "planner");
     assert_eq!(edges[0].target_id, "coder");
+    assert_eq!(edges[0].kind, AgentEdgeKind::WorksWithHint);
 }
 
 #[test]
@@ -885,7 +911,9 @@ fn mixed_markdown_and_config_hints_merge_without_duplicates() {
 
     assert_eq!(edges.len(), 2);
     assert_eq!(edges[0].target_id, "calendar");
+    assert_eq!(edges[0].kind, AgentEdgeKind::WorksWithHint);
     assert_eq!(edges[1].target_id, "coder");
+    assert_eq!(edges[1].kind, AgentEdgeKind::WorksWithHint);
 }
 
 #[tokio::test]
@@ -925,9 +953,6 @@ async fn list_agent_relationship_hints_reads_local_metadata_end_to_end() {
     assert_eq!(edges.len(), 2);
     assert_eq!(edges[0].source_id, "planner");
     assert_eq!(edges[0].target_id, "calendar");
-    assert!(
-        edges
-            .iter()
-            .all(|edge| edge.kind == AgentEdgeKind::MetadataHint)
-    );
+    assert_eq!(edges[0].kind, AgentEdgeKind::WorksWithHint);
+    assert_eq!(edges[1].kind, AgentEdgeKind::WorksWithHint);
 }

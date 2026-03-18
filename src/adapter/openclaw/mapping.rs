@@ -66,7 +66,7 @@ pub(super) fn map_binding_edge(binding: &Value) -> Result<AgentEdge, String> {
     Ok(AgentEdge {
         source_id,
         target_id,
-        kind: AgentEdgeKind::GatewayRouting,
+        kind: AgentEdgeKind::RoutesTo,
     })
 }
 
@@ -76,12 +76,24 @@ pub(super) fn normalize_binding_edges(bindings: &[Value]) -> Result<Vec<AgentEdg
         .map(map_binding_edge)
         .collect::<Result<Vec<_>, _>>()?;
     edges.sort_by(|left, right| {
-        (&left.source_id, &left.target_id).cmp(&(&right.source_id, &right.target_id))
+        (&left.source_id, &left.target_id, edge_kind_rank(&left.kind)).cmp(&(
+            &right.source_id,
+            &right.target_id,
+            edge_kind_rank(&right.kind),
+        ))
     });
     edges.dedup_by(|left, right| {
         left.source_id == right.source_id && left.target_id == right.target_id
     });
     Ok(edges)
+}
+
+fn edge_kind_rank(kind: &AgentEdgeKind) -> u8 {
+    match kind {
+        AgentEdgeKind::RoutesTo => 0,
+        AgentEdgeKind::DelegatesToHint => 1,
+        AgentEdgeKind::WorksWithHint => 2,
+    }
 }
 
 pub(super) fn map_active_session_record(

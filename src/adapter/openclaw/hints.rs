@@ -93,24 +93,21 @@ pub(super) fn load_agent_relationship_hints_from_path(
         .iter()
         .map(|agent| agent.id.clone())
         .collect();
-    let mut edge_keys = BTreeSet::new();
+    let mut edges = BTreeMap::new();
 
     for agent in &parsed.agents.list {
-        collect_config_hint_edges(agent, &known_ids, &mut edge_keys);
+        collect_config_hint_edges(agent, &known_ids, &mut edges);
 
         let agent_dir = agent
             .agent_dir
             .clone()
             .unwrap_or_else(|| agent_root.join(&agent.id).join("agent"));
 
-        collect_markdown_hint_edges(agent, &agent_dir, &alias_map, &mut edge_keys);
-        collect_agent_json_hint_edges(agent, &agent_dir, &alias_map, &mut edge_keys);
+        collect_markdown_hint_edges(agent, &agent_dir, &alias_map, &mut edges);
+        collect_agent_json_hint_edges(agent, &agent_dir, &alias_map, &mut edges);
     }
 
-    Ok(edge_keys
-        .into_iter()
-        .map(|(source_id, target_id)| metadata_edge(&source_id, &target_id))
-        .collect())
+    Ok(edges.into_values().collect())
 }
 
 fn openclaw_config_path() -> Result<PathBuf, String> {
@@ -138,11 +135,14 @@ fn build_alias_map(agents: &[AgentConfigEntry]) -> BTreeMap<String, String> {
 fn collect_config_hint_edges(
     agent: &AgentConfigEntry,
     known_ids: &BTreeSet<String>,
-    edge_keys: &mut BTreeSet<(String, String)>,
+    edges: &mut BTreeMap<(String, String), AgentEdge>,
 ) {
     for target_id in &agent.subagents.allow_agents {
         if known_ids.contains(target_id) && target_id != &agent.id {
-            edge_keys.insert((agent.id.clone(), target_id.clone()));
+            insert_hint_edge(
+                edges,
+                metadata_edge(&agent.id, target_id, AgentEdgeKind::WorksWithHint),
+            );
         }
     }
 }
@@ -151,7 +151,7 @@ fn collect_markdown_hint_edges(
     agent: &AgentConfigEntry,
     agent_dir: &Path,
     alias_map: &BTreeMap<String, String>,
-    edge_keys: &mut BTreeSet<(String, String)>,
+    edges: &mut BTreeMap<(String, String), AgentEdge>,
 ) {
     let agents_md_path = agent_dir.join("AGENTS.md");
     let Ok(markdown) = fs::read_to_string(&agents_md_path) else {
@@ -160,7 +160,10 @@ fn collect_markdown_hint_edges(
 
     for target_id in parse_works_with_targets(&markdown, alias_map) {
         if target_id != agent.id {
-            edge_keys.insert((agent.id.clone(), target_id));
+            insert_hint_edge(
+                edges,
+                metadata_edge(&agent.id, &target_id, AgentEdgeKind::WorksWithHint),
+            );
         }
     }
 }
@@ -169,7 +172,7 @@ fn collect_agent_json_hint_edges(
     agent: &AgentConfigEntry,
     agent_dir: &Path,
     alias_map: &BTreeMap<String, String>,
-    edge_keys: &mut BTreeSet<(String, String)>,
+    edges: &mut BTreeMap<(String, String), AgentEdge>,
 ) {
     let agent_json_path = agent_dir.join("agent.json");
     let Ok(raw) = fs::read_to_string(&agent_json_path) else {
@@ -181,8 +184,23 @@ fn collect_agent_json_hint_edges(
 
     for target_id in extract_delegate_targets(&parsed, alias_map) {
         if target_id != agent.id {
-            edge_keys.insert((agent.id.clone(), target_id));
+            insert_hint_edge(
+                edges,
+                metadata_edge(&agent.id, &target_id, AgentEdgeKind::DelegatesToHint),
+            );
         }
+    }
+}
+
+fn insert_hint_edge(edges: &mut BTreeMap<(String, String), AgentEdge>, edge: AgentEdge) {
+    let key = (edge.source_id.clone(), edge.target_id.clone());
+    let should_replace = edges
+        .get(&key)
+        .map(|existing| hint_priority(&edge.kind) < hint_priority(&existing.kind))
+        .unwrap_or(true);
+
+    if should_replace {
+        edges.insert(key, edge);
     }
 }
 
@@ -328,10 +346,18 @@ fn normalize_agent_key(raw: &str) -> String {
         .replace('_', "-")
 }
 
-fn metadata_edge(source_id: &str, target_id: &str) -> AgentEdge {
+fn hint_priority(kind: &AgentEdgeKind) -> u8 {
+    match kind {
+        AgentEdgeKind::DelegatesToHint => 0,
+        AgentEdgeKind::WorksWithHint => 1,
+        AgentEdgeKind::RoutesTo => 255,
+    }
+}
+
+fn metadata_edge(source_id: &str, target_id: &str, kind: AgentEdgeKind) -> AgentEdge {
     AgentEdge {
         source_id: source_id.to_string(),
         target_id: target_id.to_string(),
-        kind: AgentEdgeKind::MetadataHint,
+        kind,
     }
 }

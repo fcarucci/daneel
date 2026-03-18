@@ -117,54 +117,46 @@ fn normalize_edges(
     gateway_edges: Vec<AgentEdge>,
     hint_edges: Vec<AgentEdge>,
 ) -> Vec<AgentEdge> {
-    let mut normalized = Vec::new();
-    let mut native_pairs = BTreeSet::new();
+    let mut normalized = BTreeMap::<(String, String), AgentEdge>::new();
 
     for edge in gateway_edges {
         if !is_valid_edge(&edge, known_ids) {
             continue;
         }
 
-        let key = edge_pair_key(&edge);
-        if native_pairs.insert(key) {
-            normalized.push(AgentEdge {
-                source_id: edge.source_id,
-                target_id: edge.target_id,
-                kind: AgentEdgeKind::GatewayRouting,
-            });
-        }
+        insert_stronger_edge(&mut normalized, edge);
     }
 
-    let mut hint_pairs = BTreeSet::new();
     for edge in hint_edges {
         if !is_valid_edge(&edge, known_ids) {
             continue;
         }
 
-        let key = edge_pair_key(&edge);
-        if native_pairs.contains(&key) || !hint_pairs.insert(key) {
-            continue;
-        }
-
-        normalized.push(AgentEdge {
-            source_id: edge.source_id,
-            target_id: edge.target_id,
-            kind: AgentEdgeKind::MetadataHint,
-        });
+        insert_stronger_edge(&mut normalized, edge);
     }
 
-    normalized.sort_by(|left, right| edge_sort_key(left).cmp(&edge_sort_key(right)));
-    normalized
+    let mut edges = normalized.into_values().collect::<Vec<_>>();
+    edges.sort_by(|left, right| edge_sort_key(left).cmp(&edge_sort_key(right)));
+    edges
+}
+
+fn insert_stronger_edge(normalized: &mut BTreeMap<(String, String), AgentEdge>, edge: AgentEdge) {
+    let key = edge_pair_key(&edge);
+    let should_replace = normalized
+        .get(&key)
+        .map(|existing| edge_kind_priority(&edge.kind) < edge_kind_priority(&existing.kind))
+        .unwrap_or(true);
+
+    if should_replace {
+        normalized.insert(key, edge);
+    }
 }
 
 fn edge_sort_key(edge: &AgentEdge) -> (&str, &str, u8) {
     (
         &edge.source_id,
         &edge.target_id,
-        match edge.kind {
-            AgentEdgeKind::GatewayRouting => 0,
-            AgentEdgeKind::MetadataHint => 1,
-        },
+        edge_kind_priority(&edge.kind),
     )
 }
 
@@ -176,6 +168,14 @@ fn is_valid_edge(edge: &AgentEdge, known_ids: &BTreeSet<String>) -> bool {
     edge.source_id != edge.target_id
         && known_ids.contains(&edge.source_id)
         && known_ids.contains(&edge.target_id)
+}
+
+fn edge_kind_priority(kind: &AgentEdgeKind) -> u8 {
+    match kind {
+        AgentEdgeKind::RoutesTo => 0,
+        AgentEdgeKind::DelegatesToHint => 1,
+        AgentEdgeKind::WorksWithHint => 2,
+    }
 }
 
 fn derive_status(latest_activity_age_ms: Option<u64>, active_session_count: u64) -> AgentStatus {
@@ -288,7 +288,7 @@ mod tests {
                     agent("planner", Some(10_000), 0, AgentStatus::Idle),
                     agent("coder", None, 0, AgentStatus::Unknown),
                 ],
-                vec![edge("planner", "coder", AgentEdgeKind::GatewayRouting)],
+                vec![edge("planner", "coder", AgentEdgeKind::RoutesTo)],
                 Vec::new(),
                 Vec::new(),
             ),
@@ -334,11 +334,11 @@ mod tests {
                     agent("coder", Some(20_000), 0, AgentStatus::Idle),
                     agent("calendar", Some(30_000), 0, AgentStatus::Idle),
                 ],
-                vec![edge("planner", "coder", AgentEdgeKind::GatewayRouting)],
+                vec![edge("planner", "coder", AgentEdgeKind::RoutesTo)],
                 Vec::new(),
                 vec![
-                    edge("planner", "coder", AgentEdgeKind::MetadataHint),
-                    edge("planner", "calendar", AgentEdgeKind::MetadataHint),
+                    edge("planner", "coder", AgentEdgeKind::WorksWithHint),
+                    edge("planner", "calendar", AgentEdgeKind::WorksWithHint),
                 ],
             ),
             12,
@@ -347,11 +347,11 @@ mod tests {
         assert_eq!(snapshot.edges.len(), 2);
         assert_eq!(
             snapshot.edges[0],
-            edge("planner", "calendar", AgentEdgeKind::MetadataHint)
+            edge("planner", "calendar", AgentEdgeKind::WorksWithHint)
         );
         assert_eq!(
             snapshot.edges[1],
-            edge("planner", "coder", AgentEdgeKind::GatewayRouting)
+            edge("planner", "coder", AgentEdgeKind::RoutesTo)
         );
     }
 
@@ -365,11 +365,11 @@ mod tests {
                     agent("coder", Some(20_000), 0, AgentStatus::Idle),
                 ],
                 vec![
-                    edge("planner", "coder", AgentEdgeKind::GatewayRouting),
-                    edge("coder", "calendar", AgentEdgeKind::GatewayRouting),
+                    edge("planner", "coder", AgentEdgeKind::RoutesTo),
+                    edge("coder", "calendar", AgentEdgeKind::RoutesTo),
                 ],
                 Vec::new(),
-                vec![edge("planner", "calendar", AgentEdgeKind::MetadataHint)],
+                vec![edge("planner", "calendar", AgentEdgeKind::WorksWithHint)],
             ),
             13,
         );
@@ -385,9 +385,9 @@ mod tests {
         assert_eq!(
             snapshot.edges,
             vec![
-                edge("coder", "calendar", AgentEdgeKind::GatewayRouting),
-                edge("planner", "calendar", AgentEdgeKind::MetadataHint),
-                edge("planner", "coder", AgentEdgeKind::GatewayRouting),
+                edge("coder", "calendar", AgentEdgeKind::RoutesTo),
+                edge("planner", "calendar", AgentEdgeKind::WorksWithHint),
+                edge("planner", "coder", AgentEdgeKind::RoutesTo),
             ]
         );
     }
@@ -401,19 +401,19 @@ mod tests {
                     agent("coder", Some(20_000), 0, AgentStatus::Idle),
                 ],
                 vec![
-                    edge("planner", "ghost", AgentEdgeKind::GatewayRouting),
-                    edge("planner", "coder", AgentEdgeKind::GatewayRouting),
-                    edge("planner", "planner", AgentEdgeKind::GatewayRouting),
+                    edge("planner", "ghost", AgentEdgeKind::RoutesTo),
+                    edge("planner", "coder", AgentEdgeKind::RoutesTo),
+                    edge("planner", "planner", AgentEdgeKind::RoutesTo),
                 ],
                 Vec::new(),
-                vec![edge("ghost", "coder", AgentEdgeKind::MetadataHint)],
+                vec![edge("ghost", "coder", AgentEdgeKind::WorksWithHint)],
             ),
             14,
         );
 
         assert_eq!(
             snapshot.edges,
-            vec![edge("planner", "coder", AgentEdgeKind::GatewayRouting)]
+            vec![edge("planner", "coder", AgentEdgeKind::RoutesTo)]
         );
     }
 
@@ -475,7 +475,7 @@ mod tests {
                     agent("planner", Some(10_000), 0, AgentStatus::Idle),
                     agent("coder", None, 0, AgentStatus::Unknown),
                 ],
-                vec![edge("planner", "coder", AgentEdgeKind::GatewayRouting)],
+                vec![edge("planner", "coder", AgentEdgeKind::RoutesTo)],
                 vec![active_session("session-1", "planner", Some(100))],
                 Vec::new(),
             ),
@@ -487,6 +487,53 @@ mod tests {
         assert_eq!(summary.agent_count, 2);
         assert_eq!(summary.active_agent_count, 1);
         assert_eq!(summary.edge_count, 1);
+    }
+
+    #[test]
+    fn gateway_native_edge_priority_beats_metadata_hints_for_the_same_pair() {
+        let snapshot = assemble_graph_snapshot(
+            assembly_inputs(
+                vec![
+                    agent("planner", Some(10_000), 0, AgentStatus::Idle),
+                    agent("coder", Some(20_000), 0, AgentStatus::Idle),
+                ],
+                vec![edge("planner", "coder", AgentEdgeKind::RoutesTo)],
+                Vec::new(),
+                vec![
+                    edge("planner", "coder", AgentEdgeKind::DelegatesToHint),
+                    edge("planner", "coder", AgentEdgeKind::WorksWithHint),
+                ],
+            ),
+            17,
+        );
+
+        assert_eq!(
+            snapshot.edges,
+            vec![edge("planner", "coder", AgentEdgeKind::RoutesTo)]
+        );
+    }
+
+    #[test]
+    fn no_edge_is_labeled_delegates_to_hint_without_delegation_metadata() {
+        let snapshot = assemble_graph_snapshot(
+            assembly_inputs(
+                vec![
+                    agent("planner", Some(10_000), 0, AgentStatus::Idle),
+                    agent("coder", Some(20_000), 0, AgentStatus::Idle),
+                ],
+                vec![edge("planner", "coder", AgentEdgeKind::RoutesTo)],
+                Vec::new(),
+                vec![edge("planner", "coder", AgentEdgeKind::WorksWithHint)],
+            ),
+            18,
+        );
+
+        assert!(
+            snapshot
+                .edges
+                .iter()
+                .all(|edge| edge.kind != AgentEdgeKind::DelegatesToHint)
+        );
     }
 
     #[cfg(feature = "server")]
@@ -540,11 +587,11 @@ mod tests {
                 agent("coder", None, 0, AgentStatus::Unknown),
                 agent("calendar", Some(60_000), 0, AgentStatus::Idle),
             ],
-            bindings: vec![edge("planner", "coder", AgentEdgeKind::GatewayRouting)],
+            bindings: vec![edge("planner", "coder", AgentEdgeKind::RoutesTo)],
             sessions: vec![active_session("session-1", "planner", Some(250))],
             hints: vec![
-                edge("planner", "coder", AgentEdgeKind::MetadataHint),
-                edge("planner", "calendar", AgentEdgeKind::MetadataHint),
+                edge("planner", "coder", AgentEdgeKind::DelegatesToHint),
+                edge("planner", "calendar", AgentEdgeKind::WorksWithHint),
             ],
         };
 
@@ -565,8 +612,8 @@ mod tests {
         assert_eq!(
             snapshot.edges,
             vec![
-                edge("planner", "calendar", AgentEdgeKind::MetadataHint),
-                edge("planner", "coder", AgentEdgeKind::GatewayRouting),
+                edge("planner", "calendar", AgentEdgeKind::WorksWithHint),
+                edge("planner", "coder", AgentEdgeKind::RoutesTo),
             ]
         );
     }
