@@ -28,6 +28,40 @@ fn not_implemented<T>(method: &str) -> Result<T, String> {
 }
 
 #[cfg(feature = "server")]
+fn require_payload<'a>(payload: Option<&'a Value>, context: &str) -> Result<&'a Value, String> {
+    payload.ok_or_else(|| format!("{context} did not include a payload."))
+}
+
+#[cfg(feature = "server")]
+fn snapshot_agents(payload: &Value) -> Result<&Vec<Value>, String> {
+    payload
+        .get("snapshot")
+        .ok_or_else(|| "Gateway connect payload did not include a snapshot.".to_string())?
+        .get("health")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "Gateway snapshot did not include health.".to_string())?
+        .get("agents")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Gateway health snapshot did not include agents.".to_string())
+}
+
+#[cfg(feature = "server")]
+fn map_heartbeat(agent: &Value) -> (bool, String) {
+    let heartbeat = agent.get("heartbeat").unwrap_or(&Value::Null);
+    let enabled = heartbeat
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let schedule = heartbeat
+        .get("every")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    (enabled, schedule)
+}
+
+#[cfg(feature = "server")]
 fn map_agent_node(agent: &Value) -> Result<AgentNode, String> {
     let id = agent
         .get("agentId")
@@ -43,17 +77,7 @@ fn map_agent_node(agent: &Value) -> Result<AgentNode, String> {
         .get("isDefault")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-
-    let heartbeat = agent.get("heartbeat").unwrap_or(&Value::Null);
-    let heartbeat_enabled = heartbeat
-        .get("enabled")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let heartbeat_schedule = heartbeat
-        .get("every")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
+    let (heartbeat_enabled, heartbeat_schedule) = map_heartbeat(agent);
 
     Ok(AgentNode {
         id,
@@ -79,20 +103,8 @@ impl GatewayAdapter for OpenClawAdapter {
         let (mut socket, connect_frame) = connect_gateway(&config, "connect-list-agents-1").await?;
         let _ = socket.close(None).await;
 
-        let payload = connect_frame
-            .payload
-            .ok_or_else(|| "Gateway connect response did not include a payload.".to_string())?;
-        let snapshot = payload
-            .get("snapshot")
-            .ok_or_else(|| "Gateway connect payload did not include a snapshot.".to_string())?;
-        let health = snapshot
-            .get("health")
-            .and_then(Value::as_object)
-            .ok_or_else(|| "Gateway snapshot did not include health.".to_string())?;
-        let agents = health
-            .get("agents")
-            .and_then(Value::as_array)
-            .ok_or_else(|| "Gateway health snapshot did not include agents.".to_string())?;
+        let payload = require_payload(connect_frame.payload.as_ref(), "Gateway connect response")?;
+        let agents = snapshot_agents(payload)?;
 
         agents.iter().map(map_agent_node).collect()
     }
@@ -260,6 +272,19 @@ mod tests {
         Ok(config_path)
     }
 
+    fn gateway_snapshot_payload(agents: serde_json::Value) -> serde_json::Value {
+        json!({
+            "protocolVersion": 3,
+            "stateVersion": 42,
+            "uptimeMs": 123_456,
+            "snapshot": {
+                "health": {
+                    "agents": agents
+                }
+            }
+        })
+    }
+
     #[test]
     fn openclaw_agent_json_maps_to_agent_node() {
         let node = map_agent_node(&json!({
@@ -336,29 +361,20 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn list_agents_reads_nodes_from_gateway_snapshot() {
-        let gateway = MockGateway::spawn(json!({
-            "protocolVersion": 3,
-            "stateVersion": 42,
-            "uptimeMs": 123_456,
-            "snapshot": {
-                "health": {
-                    "agents": [
-                        {
-                            "agentId": "main",
-                            "name": "Main",
-                            "isDefault": true,
-                            "heartbeat": {
-                                "enabled": true,
-                                "every": "15m"
-                            }
-                        },
-                        {
-                            "agentId": "planner"
-                        }
-                    ]
+        let gateway = MockGateway::spawn(gateway_snapshot_payload(json!([
+            {
+                "agentId": "main",
+                "name": "Main",
+                "isDefault": true,
+                "heartbeat": {
+                    "enabled": true,
+                    "every": "15m"
                 }
+            },
+            {
+                "agentId": "planner"
             }
-        }))
+        ])))
         .expect("spawn mock gateway");
         let tempdir = tempdir().expect("create tempdir");
         let config_path = write_openclaw_config(tempdir.path(), gateway.addr.port())
