@@ -30,6 +30,14 @@ pub trait AppClient: Send + Sync + 'static {
 #[derive(Clone)]
 pub struct AppClientHandle(Arc<dyn AppClient>);
 
+impl PartialEq for AppClientHandle {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for AppClientHandle {}
+
 impl AppClientHandle {
     pub fn new(client: impl AppClient) -> Self {
         Self(Arc::new(client))

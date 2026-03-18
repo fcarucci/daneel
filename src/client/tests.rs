@@ -11,6 +11,20 @@ fn ClientProviderHarness() -> Element {
     rsx! { div { "client available" } }
 }
 
+#[component]
+fn ClientProviderRoot(client: AppClientHandle) -> Element {
+    use_context_provider(|| client.clone());
+    rsx! {
+        ClientProviderHarness {}
+    }
+}
+
+fn render_with_client(client: AppClientHandle) -> String {
+    let mut dom = VirtualDom::new_with_props(ClientProviderRoot, ClientProviderRootProps { client });
+    dom.rebuild_in_place();
+    dioxus_ssr::render(&dom)
+}
+
 #[test]
 fn web_app_client_is_send_and_sync() {
     fn requires_send<T: Send>() {}
@@ -61,14 +75,6 @@ fn error_mapping_preserves_degraded_semantics() {
 
 #[test]
 fn app_client_provider_supplies_shared_client_context() {
-    let mut dom = VirtualDom::new(|| {
-        use_context_provider(|| AppClientHandle::new(MockAppClient::healthy_gateway()));
-        rsx! {
-            ClientProviderHarness {}
-        }
-    });
-    dom.rebuild_in_place();
-
-    let html = dioxus_ssr::render(&dom);
+    let html = render_with_client(AppClientHandle::new(MockAppClient::healthy_gateway()));
     assert!(html.contains("client available"));
 }

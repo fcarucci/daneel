@@ -93,6 +93,14 @@ export function parseViewport(value) {
   return { width, height };
 }
 
+function launchBrowser(browserPath) {
+  return chromium.launch({
+    executablePath: browserPath || undefined,
+    headless: true,
+    args: ["--no-sandbox", "--disable-gpu"],
+  });
+}
+
 async function ensureParentDir(filePath) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
 }
@@ -373,13 +381,22 @@ async function captureSummary(page) {
   });
 }
 
+function buildVerificationResult(options, summary, persistedVideoPath) {
+  return {
+    verified: true,
+    url: options.url,
+    screenshot: options.screenshot,
+    dom: options.dom,
+    video: persistedVideoPath,
+    title: summary.title,
+    latestSessionCount: summary.latestSessionCount,
+    connectedRibbonPresent: summary.connectedRibbonPresent,
+  };
+}
+
 export async function verifyRoute(argv) {
   const options = parseArgs(argv);
-  const browser = await chromium.launch({
-    executablePath: options.browserPath || undefined,
-    headless: true,
-    args: ["--no-sandbox", "--disable-gpu"],
-  });
+  const browser = await launchBrowser(options.browserPath);
 
   try {
     const viewport = parseViewport(options.viewport);
@@ -420,16 +437,7 @@ export async function verifyRoute(argv) {
         ? await persistRecordedVideo(recordedVideoPath, options.video, options.url)
         : null;
 
-    return {
-      verified: true,
-      url: options.url,
-      screenshot: options.screenshot,
-      dom: options.dom,
-      video: persistedVideoPath,
-      title: summary.title,
-      latestSessionCount: summary.latestSessionCount,
-      connectedRibbonPresent: summary.connectedRibbonPresent,
-    };
+    return buildVerificationResult(options, summary, persistedVideoPath);
   } finally {
     await browser.close();
   }
