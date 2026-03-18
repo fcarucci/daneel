@@ -148,6 +148,7 @@ Commands:
   list-tasks [--limit <n>]
   list-issue-comments --issue <n>
   delete-issue-comment --comment-id <n>
+  update-issue --number <n> [--title <title>] [--body <text>] [--state <open|closed>]
   list-open-prs
   list-prs [--state <open|closed|all>]
   comment-pr --number <n> --body <text>
@@ -1335,6 +1336,37 @@ async function updatePr(options) {
   );
 }
 
+async function updateIssue(options) {
+  const { owner, repo } = repoParts();
+  const number = Number(options.number);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("update-issue requires --number <n>.");
+  }
+
+  const patch = {};
+  if (options.title) patch.title = options.title;
+  if (options.body) patch.body = options.body;
+  if (options.state) patch.state = options.state;
+
+  if (Object.keys(patch).length === 0) {
+    throw new Error("update-issue requires at least one of --title, --body, or --state.");
+  }
+
+  const issue = await rest("PATCH", `/repos/${owner}/${repo}/issues/${number}`, patch);
+  console.log(
+    JSON.stringify(
+      {
+        number: issue.number,
+        state: issue.state,
+        title: issue.title,
+        url: issue.html_url,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 async function linkPrTask(options) {
   const { owner, repo } = repoParts();
   const issueNumber = Number(options.issue);
@@ -1894,6 +1926,7 @@ const commands = {
   "list-tasks": () => listTasks(options),
   "list-issue-comments": () => listIssueComments(options),
   "delete-issue-comment": () => deleteIssueComment(options),
+  "update-issue": () => updateIssue(options),
   "list-open-prs": listOpenPrs,
   "list-prs": () => listPrs(options),
   "comment-pr": () => commentPr(options),

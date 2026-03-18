@@ -138,6 +138,40 @@ fn normalize_binding_edges(bindings: &[Value]) -> Result<Vec<AgentEdge>, String>
 }
 
 #[cfg(feature = "server")]
+fn map_active_session_record(
+    session: &Value,
+    fallback_agent_id: Option<&str>,
+) -> Result<ActiveSessionRecord, String> {
+    let session_id = session
+        .get("sessionId")
+        .or_else(|| session.get("key"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| "OpenClaw session payload is missing sessionId.".to_string())?
+        .to_string();
+    let agent_id = session
+        .get("agentId")
+        .and_then(Value::as_str)
+        .or(fallback_agent_id)
+        .ok_or_else(|| "OpenClaw session payload is missing agentId.".to_string())?
+        .to_string();
+    let task = session
+        .get("task")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    let age_ms = session
+        .get("ageMs")
+        .or_else(|| session.get("age"))
+        .and_then(Value::as_u64);
+
+    Ok(ActiveSessionRecord {
+        session_id,
+        agent_id,
+        task,
+        age_ms,
+    })
+}
+
+#[cfg(feature = "server")]
 #[async_trait]
 impl GatewayAdapter for OpenClawAdapter {
     async fn gateway_status(&self) -> Result<GatewayStatusSnapshot, String> {
@@ -199,7 +233,10 @@ mod tests {
         models::graph::{AgentEdgeKind, AgentStatus},
     };
 
-    use super::{OpenClawAdapter, map_agent_node, map_binding_edge, normalize_binding_edges};
+    use super::{
+        OpenClawAdapter, map_active_session_record, map_agent_node, map_binding_edge,
+        normalize_binding_edges,
+    };
 
     struct EnvVarGuard {
         key: &'static str,
@@ -431,6 +468,25 @@ mod tests {
         assert_eq!(edge.source_id, "main");
         assert_eq!(edge.target_id, "planner");
         assert_eq!(edge.kind, AgentEdgeKind::GatewayRouting);
+    }
+
+    #[test]
+    fn openclaw_session_json_maps_to_active_session_record() {
+        let session = map_active_session_record(
+            &json!({
+                "sessionId": "session-1",
+                "agentId": "planner",
+                "task": "plan route",
+                "ageMs": 500
+            }),
+            None,
+        )
+        .expect("map active session");
+
+        assert_eq!(session.session_id, "session-1");
+        assert_eq!(session.agent_id, "planner");
+        assert_eq!(session.task.as_deref(), Some("plan route"));
+        assert_eq!(session.age_ms, Some(500));
     }
 
     #[tokio::test]
