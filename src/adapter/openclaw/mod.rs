@@ -16,6 +16,8 @@ use crate::{
 #[cfg(feature = "server")]
 mod fetch;
 #[cfg(feature = "server")]
+mod hints;
+#[cfg(feature = "server")]
 mod mapping;
 #[cfg(feature = "server")]
 mod snapshot;
@@ -25,6 +27,8 @@ mod tests;
 
 #[cfg(feature = "server")]
 use fetch::fetch_connect_payload;
+#[cfg(feature = "server")]
+use hints::load_agent_relationship_hints;
 #[cfg(feature = "server")]
 use mapping::{map_agent_node, normalize_binding_edges};
 #[cfg(feature = "server")]
@@ -68,6 +72,6 @@ impl GatewayAdapter for OpenClawAdapter {
     }
 
     async fn list_agent_relationship_hints(&self) -> Result<Vec<AgentEdge>, String> {
-        not_implemented("list_agent_relationship_hints")
+        load_agent_relationship_hints()
     }
 }
