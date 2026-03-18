@@ -617,9 +617,14 @@ Output:
 
 Tests:
 
-- unit test: active session data marks the expected agents as active
-- unit test: no active sessions marks all agents as idle or unknown
-- unit test: unknown session agent references do not crash graph derivation
+- unit test: OpenClaw session JSON maps to internal `ActiveSessionRecord`
+- unit test: multiple sessions for different agents map correctly
+- unit test: missing optional session detail fields fall back safely
+- fixture test: unknown fields do not break session parsing
+- unit test: malformed required session identity fails with a clear error
+- unit test: duplicate session ids are normalized deterministically if duplicate records are returned
+- unit test: unknown session agent references still map safely and do not crash graph derivation
+- integration test: `OpenClawAdapter::list_active_sessions()` reads session data end to end through the mock gateway path
 
 ---
 

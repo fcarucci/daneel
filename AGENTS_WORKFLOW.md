@@ -97,6 +97,7 @@ Before opening the merge request:
 - remove warnings
 - run integration tests
 - perform manual visual verification using the repo verification workflow
+- include the resulting formatting-pass changes in the branch and pull request; do not drop `cargo fmt` edits that are part of the validated final state
 
 ## Branch And Review Discipline
 
@@ -105,6 +106,7 @@ Before opening the merge request:
 - Prefer small, reviewable commits even if the branch will later be squashed.
 - Keep the task status, branch, and merge request aligned.
 - During cleanup, prefer explicit Fowler refactorings over vague “code polish” changes.
+- If formatting changes appear while validating the task, keep them in the same PR so the reviewed branch matches the tested code exactly.
 
 ## Done Criteria
 

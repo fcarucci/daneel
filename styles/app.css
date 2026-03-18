@@ -44,3 +44,113 @@
     text-decoration: none;
   }
 }
+
+@layer components {
+  .status-pill {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+
+  .status-pill > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .status-pill--connecting {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(148, 163, 184, 0.04)),
+      rgba(255, 255, 255, 0.04);
+  }
+
+  .status-pill--connecting::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background:
+      linear-gradient(
+        110deg,
+        rgba(255, 255, 255, 0.02) 0%,
+        rgba(255, 255, 255, 0.02) 38%,
+        rgba(252, 211, 77, 0.58) 48%,
+        rgba(125, 211, 252, 0.48) 52%,
+        rgba(255, 255, 255, 0.02) 62%,
+        rgba(255, 255, 255, 0.02) 100%
+      );
+    background-size: 220% 100%;
+    background-position: 140% 50%;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: status-pill-border-sweep 3.2s linear infinite;
+    opacity: 0.88;
+  }
+
+  .status-pill--connecting::after {
+    content: "";
+    position: absolute;
+    inset: -35%;
+    border-radius: inherit;
+    background:
+      linear-gradient(
+        115deg,
+        transparent 18%,
+        rgba(255, 255, 255, 0.015) 34%,
+        rgba(255, 255, 255, 0.055) 50%,
+        rgba(125, 211, 252, 0.035) 62%,
+        rgba(255, 255, 255, 0.012) 72%,
+        transparent 84%
+      );
+    transform: translate3d(-10%, 0, 0) scaleX(1.02);
+    filter: blur(18px);
+    opacity: 0.12;
+    animation: status-pill-surface-sheen 6.8s ease-in-out infinite;
+    pointer-events: none;
+  }
+}
+
+@keyframes status-pill-border-sweep {
+  0% {
+    background-position: 140% 50%;
+  }
+
+  100% {
+    background-position: -40% 50%;
+  }
+}
+
+@keyframes status-pill-surface-sheen {
+  0%,
+  100% {
+    transform: translate3d(-10%, 0, 0) scaleX(1.02);
+    opacity: 0.045;
+  }
+
+  50% {
+    transform: translate3d(10%, 0, 0) scaleX(1.05);
+    opacity: 0.09;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-pill--connecting::before,
+  .status-pill--connecting::after {
+    animation: none;
+  }
+
+  .status-pill--connecting::before {
+    opacity: 0.65;
+  }
+
+  .status-pill--connecting::after {
+    opacity: 0.04;
+    transform: translate3d(0, 0, 0) scaleX(1.03);
+  }
+}
