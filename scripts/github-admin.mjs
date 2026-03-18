@@ -153,7 +153,9 @@ Commands:
   comment-pr --number <n> --body <text>
   ensure-release --tag <tag> [--name <title>] [--body <text>] [--draft] [--prerelease]
   upload-release-asset --tag <tag> --file <path> [--label <text>]
-  comment-pr-verification --number <n> --artifact-url <url> [--route <route>] [--latest-session-count <n>] [--connected-ribbon <true|false>] [--screenshot <path>] [--dom <path>] [--video <path>]
+  comment-pr-verification --number <n> --artifact-url <url> [--route <route>] [--latest-session-count <n>] [--connected-ribbon <true|false>] [--screenshot <path>] [--dom <path>]
+  list-release-assets --tag <tag>
+  delete-release-asset --asset-id <n>
   list-pr-review-threads --number <n>
   resolve-pr-review-thread --thread-id <id>
   merge-pr --number <n> [--method <merge|squash|rebase>] [--title <title>] [--message <text>]
@@ -1021,6 +1023,51 @@ async function uploadReleaseAsset(options) {
   );
 }
 
+async function listReleaseAssets(options) {
+  const tag = options.tag;
+  if (!tag || typeof tag !== "string") {
+    throw new Error("list-release-assets requires --tag <tag>.");
+  }
+
+  const release = await getReleaseByTag(tag);
+  if (!release) {
+    throw new Error(`Release with tag '${tag}' does not exist.`);
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        release: {
+          id: release.id,
+          tag: release.tag_name,
+          url: release.html_url,
+        },
+        assets: (release.assets || []).map((asset) => ({
+          id: asset.id,
+          name: asset.name,
+          label: asset.label,
+          size: asset.size,
+          state: asset.state,
+          download_url: asset.browser_download_url,
+          url: asset.url,
+        })),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function deleteReleaseAssetCommand(options) {
+  const assetId = Number(options["asset-id"] || options.assetId);
+  if (!Number.isInteger(assetId) || assetId <= 0) {
+    throw new Error("delete-release-asset requires --asset-id <n>.");
+  }
+
+  await deleteReleaseAsset(assetId);
+  console.log(JSON.stringify({ deleted: true, assetId }, null, 2));
+}
+
 async function commentPrVerification(options) {
   const number = Number(options.number);
   const artifactUrl = options["artifact-url"] || options.artifactUrl;
@@ -1053,9 +1100,6 @@ async function commentPrVerification(options) {
   }
   if (options.dom) {
     lines.push(`- DOM snapshot: ${options.dom}`);
-  }
-  if (options.video) {
-    lines.push(`- Local video path: ${options.video}`);
   }
 
   await commentPr({ number, body: lines.join("\n") });
@@ -1855,6 +1899,8 @@ const commands = {
   "comment-pr": () => commentPr(options),
   "ensure-release": () => ensureRelease(options),
   "upload-release-asset": () => uploadReleaseAsset(options),
+  "list-release-assets": () => listReleaseAssets(options),
+  "delete-release-asset": () => deleteReleaseAssetCommand(options),
   "comment-pr-verification": () => commentPrVerification(options),
   "list-pr-review-threads": () => listPrReviewThreads(options),
   "resolve-pr-review-thread": () => resolvePrReviewThread(options),
