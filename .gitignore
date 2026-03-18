@@ -12,6 +12,7 @@
 Thumbs.db
 
 # Environment and local tooling
+daneel.toml
 .env
 .env.*
 .direnv/
