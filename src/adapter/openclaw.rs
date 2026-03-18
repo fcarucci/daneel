@@ -122,4 +122,42 @@ mod tests {
         assert_eq!(node.latest_activity_age_ms, None);
         assert_eq!(node.status, AgentStatus::Unknown);
     }
+
+    #[test]
+    fn unknown_fields_do_not_break_agent_mapping() {
+        let node = map_agent_node(
+            &json!({
+                "agentId": "calendar",
+                "name": "Calendar",
+                "heartbeat": {
+                    "enabled": true,
+                    "every": "30m",
+                    "model": "ignored-model"
+                },
+                "extra": {
+                    "nested": ["noise", 1, true]
+                }
+            }),
+        )
+        .expect("map noisy agent node");
+
+        assert_eq!(node.id, "calendar");
+        assert_eq!(node.name, "Calendar");
+        assert_eq!(node.heartbeat_schedule, "30m");
+    }
+
+    #[test]
+    fn missing_optional_fields_fall_back_safely() {
+        let node = map_agent_node(&json!({ "agentId": "health-coach" }))
+            .expect("map sparse agent node");
+
+        assert_eq!(node.id, "health-coach");
+        assert_eq!(node.name, "health-coach");
+        assert!(!node.is_default);
+        assert!(!node.heartbeat_enabled);
+        assert_eq!(node.heartbeat_schedule, "");
+        assert_eq!(node.active_session_count, 0);
+        assert_eq!(node.latest_activity_age_ms, None);
+        assert_eq!(node.status, AgentStatus::Unknown);
+    }
 }
