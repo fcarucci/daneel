@@ -34,3 +34,4 @@ npm-debug.log*
 # Generated Tailwind output
 /assets/main.css
 .ccp
+daneel.toml

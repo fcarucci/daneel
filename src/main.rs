@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+mod adapter;
 mod app_state;
 mod components;
 mod gateway;
