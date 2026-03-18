@@ -14,6 +14,9 @@ mod session_store;
 mod status;
 mod ws;
 
+pub const GATEWAY_STATUS_ENDPOINT: &str = "gateway/status";
+pub const AGENT_OVERVIEW_ENDPOINT: &str = "agents/overview";
+
 #[cfg(feature = "server")]
 pub(crate) use config::LoadedGatewayConfig;
 pub(crate) use config::{DEFAULT_GATEWAY_URL, load_gateway_config};
@@ -23,11 +26,13 @@ pub(crate) use ws::{connect_request, wait_for_response};
 
 #[server(endpoint = "gateway/status")]
 pub async fn get_gateway_status() -> Result<GatewayStatusSnapshot, ServerFnError> {
+    debug_assert_eq!(GATEWAY_STATUS_ENDPOINT, "gateway/status");
     Ok(load_gateway_status().await)
 }
 
 #[server(endpoint = "agents/overview")]
 pub async fn get_agent_overview() -> Result<AgentOverviewSnapshot, ServerFnError> {
+    debug_assert_eq!(AGENT_OVERVIEW_ENDPOINT, "agents/overview");
     agents::load_agent_overview()
         .await
         .map_err(ServerFnError::new)

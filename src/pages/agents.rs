@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::client::{AppClient, WebAppClient};
+use crate::client::use_app_client;
 use crate::models::agents::{AgentOverviewItem, AgentOverviewSnapshot};
 use crate::utils::time::{ACTIVE_WINDOW_MS, format_age_badge, heartbeat_is_active};
 
@@ -19,7 +19,7 @@ const RECENT_BADGE_IDLE_CLASS: &str = "inline-flex rounded-full border border-wh
 
 #[component]
 pub fn Agents() -> Element {
-    let client = WebAppClient;
+    let client = use_app_client();
     let agent_overview = use_resource(move || {
         let client = client.clone();
         async move { client.get_agent_overview().await }

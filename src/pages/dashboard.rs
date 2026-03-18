@@ -2,12 +2,12 @@
 
 use dioxus::prelude::*;
 
-use crate::client::{AppClient, WebAppClient};
+use crate::client::use_app_client;
 use crate::models::gateway::{GatewayLevel, GatewayStatusSnapshot};
 
 #[component]
 pub fn Dashboard() -> Element {
-    let client = WebAppClient;
+    let client = use_app_client();
     let gateway_status = use_resource(move || {
         let client = client.clone();
         async move { client.get_gateway_status().await }
@@ -95,4 +95,3 @@ fn GatewayStatusCard(
         },
     }
 }
-// SPDX-License-Identifier: Apache-2.0

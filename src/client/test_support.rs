@@ -2,6 +2,7 @@
 
 use super::AppClient;
 use crate::models::{agents::AgentOverviewSnapshot, gateway::GatewayStatusSnapshot};
+use async_trait::async_trait;
 use dioxus::prelude::ServerFnError;
 
 /// Mock AppClient for testing UI-facing code
@@ -19,14 +20,6 @@ impl MockAppClient {
             gateway_status,
             agent_overview,
         }
-    }
-
-    pub fn gateway_status(&self) -> &Result<GatewayStatusSnapshot, ServerFnError> {
-        &self.gateway_status
-    }
-
-    pub fn agent_overview(&self) -> &Result<AgentOverviewSnapshot, ServerFnError> {
-        &self.agent_overview
     }
 
     pub fn healthy_gateway() -> Self {
@@ -63,7 +56,7 @@ impl MockAppClient {
     }
 }
 
-#[cfg_attr(feature = "server", async_trait::async_trait)]
+#[async_trait(?Send)]
 impl AppClient for MockAppClient {
     async fn get_gateway_status(&self) -> Result<GatewayStatusSnapshot, ServerFnError> {
         self.gateway_status.clone()

@@ -736,6 +736,7 @@ dependencies = [
  "futures-util",
  "gloo-timers",
  "libc",
+ "pollster",
  "serde",
  "serde_json",
  "serial_test",
