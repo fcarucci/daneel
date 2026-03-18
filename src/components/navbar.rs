@@ -51,18 +51,24 @@ fn resolved_live_level(
     gateway_status: &Resource<Result<crate::models::gateway::GatewayStatusSnapshot, ServerFnError>>,
     live_gateway: &crate::components::live_gateway::LiveGatewayState,
 ) -> OperatorConnectionState {
-    let gateway_level = gateway_status
+    let gateway_level = gateway_level_from_status(gateway_status);
+    let live_level = (live_gateway.live_status)().map(|event| event.level);
+    let preferred_level = preferred_gateway_level(live_level, gateway_level);
+
+    resolve_operator_connection_state((live_gateway.backend_state)(), preferred_level)
+}
+
+fn gateway_level_from_status(
+    gateway_status: &Resource<Result<crate::models::gateway::GatewayStatusSnapshot, ServerFnError>>,
+) -> Option<LiveGatewayLevel> {
+    gateway_status
         .read_unchecked()
         .as_ref()
         .and_then(|value| value.as_ref().ok())
         .map(|snapshot| match snapshot.level {
             GatewayLevel::Healthy => LiveGatewayLevel::Healthy,
             GatewayLevel::Degraded => LiveGatewayLevel::Degraded,
-        });
-    let live_level = (live_gateway.live_status)().map(|event| event.level);
-    let preferred_level = preferred_gateway_level(live_level, gateway_level);
-
-    resolve_operator_connection_state((live_gateway.backend_state)(), preferred_level)
+        })
 }
 
 fn preferred_gateway_level(
