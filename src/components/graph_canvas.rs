@@ -2,15 +2,13 @@
 
 use dioxus::prelude::*;
 
-use crate::models::graph::{AgentEdgeKind, AgentGraphSnapshot, AgentNode, AgentStatus};
+use crate::components::agent_node_card::{AgentNodeCard, NODE_HEIGHT, NODE_WIDTH};
+use crate::models::graph::{AgentEdgeKind, AgentGraphSnapshot, AgentNode};
 
 const CANVAS_WIDTH: f32 = 1840.0;
-const NODE_WIDTH: f32 = 352.0;
-const NODE_HEIGHT: f32 = 184.0;
 const HORIZONTAL_MARGIN: f32 = 48.0;
 const VERTICAL_MARGIN: f32 = 24.0;
 const ROW_GAP: f32 = 56.0;
-const MAX_LABEL_CHARS: usize = 18;
 
 #[derive(Clone, Debug, PartialEq)]
 struct PositionedNode {
@@ -63,84 +61,7 @@ pub fn GraphCanvas(snapshot: AgentGraphSnapshot) -> Element {
                     }
                 }
                 for positioned in positioned_nodes.iter() {
-                    g {
-                        "data-agent-node": positioned.node.id.as_str(),
-                        transform: format!("translate({} {})", positioned.x, positioned.y),
-                        rect {
-                            width: NODE_WIDTH,
-                            height: NODE_HEIGHT,
-                            rx: "28",
-                            fill: node_fill(&positioned.node.status),
-                            stroke: node_stroke(&positioned.node.status),
-                            stroke_width: "1.5",
-                        }
-                        rect {
-                            x: "1",
-                            y: "1",
-                            width: NODE_WIDTH - 2.0,
-                            height: NODE_HEIGHT - 2.0,
-                            rx: "27",
-                            fill: "none",
-                            stroke: "rgba(255,255,255,0.06)",
-                            stroke_width: "1",
-                        }
-                        circle {
-                            cx: "34",
-                            cy: "34",
-                            r: "12",
-                            fill: node_signal(&positioned.node.status),
-                        }
-                        text {
-                            x: "68",
-                            y: "50",
-                            fill: "#f8fafc",
-                            font_size: "30",
-                            font_weight: "600",
-                            letter_spacing: "-0.02em",
-                            {truncated_graph_label(positioned.node.name.as_str())}
-                        }
-                        text {
-                            x: "34",
-                            y: "108",
-                            fill: "#94a3b8",
-                            font_size: "21",
-                            font_weight: "600",
-                            letter_spacing: "0.16em",
-                            {status_label(&positioned.node.status)}
-                        }
-                        text {
-                            x: "34",
-                            y: "150",
-                            fill: "#cbd5e1",
-                            font_size: "22",
-                            "Latest: "
-                            {activity_label(&positioned.node)}
-                        }
-                        if positioned.node.is_default {
-                            g { "data-agent-default-badge": positioned.node.id.as_str(),
-                                rect {
-                                    x: NODE_WIDTH - 150.0,
-                                    y: "62",
-                                    width: "116",
-                                    height: "30",
-                                    rx: "17",
-                                    fill: "rgba(34,211,238,0.12)",
-                                    stroke: "rgba(103,232,249,0.3)",
-                                    stroke_width: "1.5",
-                                }
-                                text {
-                                    x: NODE_WIDTH - 92.0,
-                                    y: "82",
-                                    fill: "#67e8f9",
-                                    font_size: "15",
-                                    font_weight: "700",
-                                    letter_spacing: "0.18em",
-                                    text_anchor: "middle",
-                                    "DEFAULT"
-                                }
-                            }
-                        }
-                    }
+                    AgentNodeCard { node: positioned.node.clone(), x: positioned.x, y: positioned.y }
                 }
             }
         }
@@ -233,58 +154,6 @@ fn edge_path(source: &PositionedNode, target: &PositionedNode) -> String {
     )
 }
 
-fn truncated_graph_label(name: &str) -> String {
-    let grapheme_count = name.chars().count();
-    if grapheme_count <= MAX_LABEL_CHARS {
-        return name.to_string();
-    }
-
-    let mut truncated = name.chars().take(MAX_LABEL_CHARS - 1).collect::<String>();
-    truncated.push('…');
-    truncated
-}
-
-fn status_label(status: &AgentStatus) -> &'static str {
-    match status {
-        AgentStatus::Active => "ACTIVE",
-        AgentStatus::Idle => "IDLE",
-        AgentStatus::Unknown => "UNKNOWN",
-    }
-}
-
-fn activity_label(node: &AgentNode) -> String {
-    match node.latest_activity_age_ms {
-        Some(age_ms) if age_ms < 60_000 => format!("{}s ago", age_ms / 1_000),
-        Some(age_ms) if age_ms < 3_600_000 => format!("{}m ago", age_ms / 60_000),
-        Some(age_ms) => format!("{}h ago", age_ms / 3_600_000),
-        None => "No activity".to_string(),
-    }
-}
-
-fn node_fill(status: &AgentStatus) -> &'static str {
-    match status {
-        AgentStatus::Active => "rgba(6, 78, 59, 0.82)",
-        AgentStatus::Idle => "rgba(15, 23, 42, 0.96)",
-        AgentStatus::Unknown => "rgba(30, 41, 59, 0.92)",
-    }
-}
-
-fn node_stroke(status: &AgentStatus) -> &'static str {
-    match status {
-        AgentStatus::Active => "rgba(110, 231, 183, 0.6)",
-        AgentStatus::Idle => "rgba(148, 163, 184, 0.32)",
-        AgentStatus::Unknown => "rgba(251, 191, 36, 0.34)",
-    }
-}
-
-fn node_signal(status: &AgentStatus) -> &'static str {
-    match status {
-        AgentStatus::Active => "#6ee7b7",
-        AgentStatus::Idle => "#94a3b8",
-        AgentStatus::Unknown => "#fbbf24",
-    }
-}
-
 impl AgentEdgeKind {
     fn css_name(&self) -> &'static str {
         match self {
@@ -322,7 +191,7 @@ impl AgentEdgeKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::graph::{AgentEdge, AgentGraphSnapshot};
+    use crate::models::graph::{AgentEdge, AgentGraphSnapshot, AgentStatus};
 
     #[component]
     fn GraphCanvasHarness(snapshot: AgentGraphSnapshot) -> Element {
@@ -422,7 +291,7 @@ mod tests {
         });
 
         assert!(html.contains("this-agent-name-i…"));
-        assert!(!html.contains("this-agent-name-is-way-too-long-for-the-first-slice"));
+        assert!(html.contains("aria-label=\"this-agent-name-is-way-too-long-for-the-first-slice agent card, status active\""));
     }
 
     #[test]
