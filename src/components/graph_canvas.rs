@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::components::agent_node_card::{AgentNodeCard, NODE_HEIGHT, NODE_WIDTH};
-use crate::models::graph::{AgentEdgeKind, AgentGraphSnapshot, AgentNode};
+use crate::models::graph::{AgentEdge, AgentEdgeKind, AgentGraphSnapshot, AgentNode};
 
 const CANVAS_WIDTH: f32 = 1840.0;
 const HORIZONTAL_MARGIN: f32 = 48.0;
@@ -24,6 +24,16 @@ struct GraphLayoutMetrics {
     row_count: usize,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct RenderedEdge {
+    kind: AgentEdgeKind,
+    path: String,
+    label: &'static str,
+    label_x: f32,
+    label_y: f32,
+    lane: i32,
+}
+
 #[component]
 pub fn GraphCanvas(snapshot: AgentGraphSnapshot) -> Element {
     if snapshot.nodes.is_empty() {
@@ -38,6 +48,7 @@ pub fn GraphCanvas(snapshot: AgentGraphSnapshot) -> Element {
 
     let layout = graph_layout_metrics(&snapshot);
     let positioned_nodes = layout_graph_nodes(&snapshot, layout);
+    let rendered_edges = build_rendered_edges(&snapshot.edges, &positioned_nodes);
 
     rsx! {
         div { class: "overflow-hidden rounded-[1.5rem] border border-white/8 bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.08),transparent_35%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,23,0.98))]",
@@ -46,17 +57,40 @@ pub fn GraphCanvas(snapshot: AgentGraphSnapshot) -> Element {
                 view_box: format!("0 0 {} {}", CANVAS_WIDTH, layout.canvas_height),
                 role: "img",
                 "aria-label": "Agent graph canvas",
-                for edge in snapshot.edges.iter() {
-                    if let Some((source, target)) = resolve_edge_nodes(&positioned_nodes, edge.source_id.as_str(), edge.target_id.as_str()) {
+                for edge in rendered_edges.iter() {
+                    g {
+                        "data-agent-edge": edge.kind.css_name(),
+                        "data-agent-edge-family": edge.kind.family(),
+                        "data-edge-lane": edge.lane,
                         path {
-                            "data-agent-edge": edge.kind.css_name(),
-                            d: edge_path(source, target),
+                            d: edge.path.as_str(),
                             fill: "none",
                             stroke: edge.kind.stroke(),
                             stroke_width: edge.kind.stroke_width(),
                             stroke_dasharray: edge.kind.stroke_dasharray(),
                             stroke_linecap: "round",
                             opacity: "0.92",
+                        }
+                        rect {
+                            x: edge.label_x - edge_label_width(edge.label) / 2.0,
+                            y: edge.label_y - 14.0,
+                            width: edge_label_width(edge.label),
+                            height: "24",
+                            rx: "12",
+                            fill: edge.kind.label_fill(),
+                            stroke: edge.kind.label_stroke(),
+                            stroke_width: "1",
+                        }
+                        text {
+                            x: edge.label_x,
+                            y: edge.label_y + 1.0,
+                            fill: edge.kind.label_text(),
+                            font_size: "12",
+                            font_weight: "700",
+                            letter_spacing: "0.08em",
+                            text_anchor: "middle",
+                            "data-agent-edge-label": edge.kind.css_name(),
+                            {edge.label}
                         }
                     }
                 }
@@ -142,24 +176,105 @@ fn resolve_edge_nodes<'a>(
     Some((source, target))
 }
 
-fn edge_path(source: &PositionedNode, target: &PositionedNode) -> String {
+fn build_rendered_edges(
+    edges: &[AgentEdge],
+    positioned_nodes: &[PositionedNode],
+) -> Vec<RenderedEdge> {
+    edges
+        .iter()
+        .filter_map(|edge| {
+            let (source, target) = resolve_edge_nodes(
+                positioned_nodes,
+                edge.source_id.as_str(),
+                edge.target_id.as_str(),
+            )?;
+            let lane = edge.kind.lane();
+            let path = edge_path(source, target, lane);
+            let (label_x, label_y) = edge_label_position(source, target, lane);
+
+            Some(RenderedEdge {
+                kind: edge.kind.clone(),
+                path,
+                label: edge.kind.label(),
+                label_x,
+                label_y,
+                lane,
+            })
+        })
+        .collect()
+}
+
+fn edge_path(source: &PositionedNode, target: &PositionedNode, lane: i32) -> String {
     let start_x = source.x + NODE_WIDTH;
     let start_y = source.y + (NODE_HEIGHT / 2.0);
     let end_x = target.x;
     let end_y = target.y + (NODE_HEIGHT / 2.0);
     let midpoint_x = (start_x + end_x) / 2.0;
+    let curvature = lane_curvature(lane, start_y, end_y);
+    let control_y1 = start_y + curvature;
+    let control_y2 = end_y - curvature;
 
     format!(
-        "M {start_x:.1} {start_y:.1} C {midpoint_x:.1} {start_y:.1}, {midpoint_x:.1} {end_y:.1}, {end_x:.1} {end_y:.1}"
+        "M {start_x:.1} {start_y:.1} C {midpoint_x:.1} {control_y1:.1}, {midpoint_x:.1} {control_y2:.1}, {end_x:.1} {end_y:.1}"
     )
 }
 
+fn edge_label_position(source: &PositionedNode, target: &PositionedNode, lane: i32) -> (f32, f32) {
+    let start_x = source.x + NODE_WIDTH;
+    let start_y = source.y + (NODE_HEIGHT / 2.0);
+    let end_x = target.x;
+    let end_y = target.y + (NODE_HEIGHT / 2.0);
+    let x = (start_x + end_x) / 2.0;
+    let y = ((start_y + end_y) / 2.0) + lane_label_offset(lane, start_y, end_y);
+
+    (x, y)
+}
+
+fn lane_curvature(lane: i32, start_y: f32, end_y: f32) -> f32 {
+    let separation = (end_y - start_y).abs();
+    let base = if separation < 4.0 { 92.0 } else { 42.0 };
+    lane as f32 * base
+}
+
+fn lane_label_offset(lane: i32, start_y: f32, end_y: f32) -> f32 {
+    let separation = (end_y - start_y).abs();
+    let base = if separation < 4.0 { 36.0 } else { 22.0 };
+    lane as f32 * base
+}
+
+fn edge_label_width(label: &str) -> f32 {
+    (label.chars().count() as f32 * 7.4).max(62.0) + 24.0
+}
+
 impl AgentEdgeKind {
+    fn family(&self) -> &'static str {
+        match self {
+            AgentEdgeKind::RoutesTo => "gateway_native",
+            AgentEdgeKind::WorksWithHint | AgentEdgeKind::DelegatesToHint => "metadata_hint",
+        }
+    }
+
     fn css_name(&self) -> &'static str {
         match self {
             AgentEdgeKind::RoutesTo => "routes_to",
             AgentEdgeKind::WorksWithHint => "works_with_hint",
             AgentEdgeKind::DelegatesToHint => "delegates_to_hint",
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            AgentEdgeKind::RoutesTo => "Routes",
+            AgentEdgeKind::WorksWithHint => "Works with",
+            AgentEdgeKind::DelegatesToHint => "Delegates",
+        }
+    }
+
+    fn lane(&self) -> i32 {
+        match self {
+            AgentEdgeKind::RoutesTo => 0,
+            AgentEdgeKind::WorksWithHint => -1,
+            AgentEdgeKind::DelegatesToHint => 1,
         }
     }
 
@@ -184,6 +299,30 @@ impl AgentEdgeKind {
             AgentEdgeKind::RoutesTo => "0",
             AgentEdgeKind::WorksWithHint => "7 9",
             AgentEdgeKind::DelegatesToHint => "10 7",
+        }
+    }
+
+    fn label_fill(&self) -> &'static str {
+        match self {
+            AgentEdgeKind::RoutesTo => "rgba(8,145,178,0.18)",
+            AgentEdgeKind::WorksWithHint => "rgba(147,51,234,0.16)",
+            AgentEdgeKind::DelegatesToHint => "rgba(217,119,6,0.16)",
+        }
+    }
+
+    fn label_stroke(&self) -> &'static str {
+        match self {
+            AgentEdgeKind::RoutesTo => "rgba(103,232,249,0.35)",
+            AgentEdgeKind::WorksWithHint => "rgba(216,180,254,0.35)",
+            AgentEdgeKind::DelegatesToHint => "rgba(251,191,36,0.35)",
+        }
+    }
+
+    fn label_text(&self) -> &'static str {
+        match self {
+            AgentEdgeKind::RoutesTo => "#a5f3fc",
+            AgentEdgeKind::WorksWithHint => "#e9d5ff",
+            AgentEdgeKind::DelegatesToHint => "#fde68a",
         }
     }
 }
@@ -247,6 +386,7 @@ mod tests {
 
         assert_eq!(html.matches("data-agent-node=").count(), 3);
         assert_eq!(html.matches("data-agent-edge=").count(), 2);
+        assert_eq!(html.matches("data-agent-edge-label=").count(), 2);
         assert!(html.contains("Agent graph canvas"));
     }
 
@@ -304,5 +444,103 @@ mod tests {
 
         assert!(html.contains("data-agent-default-badge=\"planner\""));
         assert!(html.contains(">DEFAULT<"));
+    }
+
+    #[test]
+    fn edge_labels_render_for_known_edge_kinds() {
+        let html = render_graph(AgentGraphSnapshot {
+            nodes: vec![
+                node("planner", "planner", AgentStatus::Active),
+                node("email", "email", AgentStatus::Active),
+            ],
+            edges: vec![
+                AgentEdge {
+                    source_id: "planner".to_string(),
+                    target_id: "email".to_string(),
+                    kind: AgentEdgeKind::RoutesTo,
+                },
+                AgentEdge {
+                    source_id: "planner".to_string(),
+                    target_id: "email".to_string(),
+                    kind: AgentEdgeKind::WorksWithHint,
+                },
+                AgentEdge {
+                    source_id: "planner".to_string(),
+                    target_id: "email".to_string(),
+                    kind: AgentEdgeKind::DelegatesToHint,
+                },
+            ],
+            snapshot_ts: 1,
+        });
+
+        assert!(html.contains(">Routes<"));
+        assert!(html.contains(">Works with<"));
+        assert!(html.contains(">Delegates<"));
+    }
+
+    #[test]
+    fn overlapping_edges_use_separate_lanes_for_legibility() {
+        let snapshot = AgentGraphSnapshot {
+            nodes: vec![
+                node("planner", "planner", AgentStatus::Active),
+                node("email", "email", AgentStatus::Active),
+            ],
+            edges: vec![
+                AgentEdge {
+                    source_id: "planner".to_string(),
+                    target_id: "email".to_string(),
+                    kind: AgentEdgeKind::RoutesTo,
+                },
+                AgentEdge {
+                    source_id: "planner".to_string(),
+                    target_id: "email".to_string(),
+                    kind: AgentEdgeKind::WorksWithHint,
+                },
+                AgentEdge {
+                    source_id: "planner".to_string(),
+                    target_id: "email".to_string(),
+                    kind: AgentEdgeKind::DelegatesToHint,
+                },
+            ],
+            snapshot_ts: 1,
+        };
+
+        let layout = graph_layout_metrics(&snapshot);
+        let positioned = layout_graph_nodes(&snapshot, layout);
+        let edges = build_rendered_edges(&snapshot.edges, &positioned);
+
+        assert_eq!(edges.len(), 3);
+        assert_ne!(edges[0].path, edges[1].path);
+        assert_ne!(edges[0].path, edges[2].path);
+        assert_ne!(edges[0].label_y, edges[1].label_y);
+        assert_ne!(edges[0].label_y, edges[2].label_y);
+    }
+
+    #[test]
+    fn metadata_edges_use_distinct_visual_treatment_from_gateway_native_edges() {
+        let html = render_graph(AgentGraphSnapshot {
+            nodes: vec![
+                node("planner", "planner", AgentStatus::Active),
+                node("email", "email", AgentStatus::Active),
+            ],
+            edges: vec![
+                AgentEdge {
+                    source_id: "planner".to_string(),
+                    target_id: "email".to_string(),
+                    kind: AgentEdgeKind::RoutesTo,
+                },
+                AgentEdge {
+                    source_id: "planner".to_string(),
+                    target_id: "email".to_string(),
+                    kind: AgentEdgeKind::WorksWithHint,
+                },
+            ],
+            snapshot_ts: 1,
+        });
+
+        assert!(html.contains("data-agent-edge-family=\"gateway_native\""));
+        assert!(html.contains("data-agent-edge-family=\"metadata_hint\""));
+        assert!(html.contains("stroke-dasharray=\"0\""));
+        assert!(html.contains("stroke-dasharray=\"7 9\""));
     }
 }
