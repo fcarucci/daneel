@@ -27,11 +27,26 @@ struct GraphLayoutMetrics {
 #[derive(Clone, Debug, PartialEq)]
 struct RenderedEdge {
     kind: AgentEdgeKind,
+    style: EdgeStyle,
     path: String,
     label: &'static str,
     label_x: f32,
     label_y: f32,
     lane: i32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct EdgeStyle {
+    css_name: &'static str,
+    family: &'static str,
+    label: &'static str,
+    lane: i32,
+    stroke: &'static str,
+    stroke_width: &'static str,
+    stroke_dasharray: &'static str,
+    label_fill: &'static str,
+    label_stroke: &'static str,
+    label_text: &'static str,
 }
 
 #[component]
@@ -59,37 +74,37 @@ pub fn GraphCanvas(snapshot: AgentGraphSnapshot) -> Element {
                 "aria-label": "Agent graph canvas",
                 for edge in rendered_edges.iter() {
                     g {
-                        "data-agent-edge": edge.kind.css_name(),
-                        "data-agent-edge-family": edge.kind.family(),
+                        "data-agent-edge": edge.style.css_name,
+                        "data-agent-edge-family": edge.style.family,
                         "data-edge-lane": edge.lane,
                         path {
                             d: edge.path.as_str(),
                             fill: "none",
-                            stroke: edge.kind.stroke(),
-                            stroke_width: edge.kind.stroke_width(),
-                            stroke_dasharray: edge.kind.stroke_dasharray(),
+                            stroke: edge.style.stroke,
+                            stroke_width: edge.style.stroke_width,
+                            stroke_dasharray: edge.style.stroke_dasharray,
                             stroke_linecap: "round",
                             opacity: "0.92",
                         }
                         rect {
-                            x: edge.label_x - edge_label_width(edge.label) / 2.0,
+                            x: edge.label_x - edge.label_width() / 2.0,
                             y: edge.label_y - 14.0,
-                            width: edge_label_width(edge.label),
+                            width: edge.label_width(),
                             height: "24",
                             rx: "12",
-                            fill: edge.kind.label_fill(),
-                            stroke: edge.kind.label_stroke(),
+                            fill: edge.style.label_fill,
+                            stroke: edge.style.label_stroke,
                             stroke_width: "1",
                         }
                         text {
                             x: edge.label_x,
                             y: edge.label_y + 1.0,
-                            fill: edge.kind.label_text(),
+                            fill: edge.style.label_text,
                             font_size: "12",
                             font_weight: "700",
                             letter_spacing: "0.08em",
                             text_anchor: "middle",
-                            "data-agent-edge-label": edge.kind.css_name(),
+                            "data-agent-edge-label": edge.style.css_name,
                             {edge.label}
                         }
                     }
@@ -182,148 +197,111 @@ fn build_rendered_edges(
 ) -> Vec<RenderedEdge> {
     edges
         .iter()
-        .filter_map(|edge| {
-            let (source, target) = resolve_edge_nodes(
-                positioned_nodes,
-                edge.source_id.as_str(),
-                edge.target_id.as_str(),
-            )?;
-            let lane = edge.kind.lane();
-            let path = edge_path(source, target, lane);
-            let (label_x, label_y) = edge_label_position(source, target, lane);
-
-            Some(RenderedEdge {
-                kind: edge.kind.clone(),
-                path,
-                label: edge.kind.label(),
-                label_x,
-                label_y,
-                lane,
-            })
-        })
+        .filter_map(|edge| RenderedEdge::from_edge(edge, positioned_nodes))
         .collect()
 }
 
-fn edge_path(source: &PositionedNode, target: &PositionedNode, lane: i32) -> String {
-    let start_x = source.x + NODE_WIDTH;
-    let start_y = source.y + (NODE_HEIGHT / 2.0);
-    let end_x = target.x;
-    let end_y = target.y + (NODE_HEIGHT / 2.0);
-    let midpoint_x = (start_x + end_x) / 2.0;
-    let curvature = lane_curvature(lane, start_y, end_y);
-    let control_y1 = start_y + curvature;
-    let control_y2 = end_y - curvature;
-
-    format!(
-        "M {start_x:.1} {start_y:.1} C {midpoint_x:.1} {control_y1:.1}, {midpoint_x:.1} {control_y2:.1}, {end_x:.1} {end_y:.1}"
-    )
-}
-
-fn edge_label_position(source: &PositionedNode, target: &PositionedNode, lane: i32) -> (f32, f32) {
-    let start_x = source.x + NODE_WIDTH;
-    let start_y = source.y + (NODE_HEIGHT / 2.0);
-    let end_x = target.x;
-    let end_y = target.y + (NODE_HEIGHT / 2.0);
-    let x = (start_x + end_x) / 2.0;
-    let y = ((start_y + end_y) / 2.0) + lane_label_offset(lane, start_y, end_y);
-
-    (x, y)
-}
-
-fn lane_curvature(lane: i32, start_y: f32, end_y: f32) -> f32 {
-    let separation = (end_y - start_y).abs();
-    let base = if separation < 4.0 { 92.0 } else { 42.0 };
-    lane as f32 * base
-}
-
-fn lane_label_offset(lane: i32, start_y: f32, end_y: f32) -> f32 {
-    let separation = (end_y - start_y).abs();
-    let base = if separation < 4.0 { 36.0 } else { 22.0 };
-    lane as f32 * base
-}
-
-fn edge_label_width(label: &str) -> f32 {
-    (label.chars().count() as f32 * 7.4).max(62.0) + 24.0
-}
-
 impl AgentEdgeKind {
-    fn family(&self) -> &'static str {
+    fn style(&self) -> EdgeStyle {
         match self {
-            AgentEdgeKind::RoutesTo => "gateway_native",
-            AgentEdgeKind::WorksWithHint | AgentEdgeKind::DelegatesToHint => "metadata_hint",
+            AgentEdgeKind::RoutesTo => EdgeStyle {
+                css_name: "routes_to",
+                family: "gateway_native",
+                label: "Routes",
+                lane: 0,
+                stroke: "#67e8f9",
+                stroke_width: "3",
+                stroke_dasharray: "0",
+                label_fill: "rgba(8,145,178,0.18)",
+                label_stroke: "rgba(103,232,249,0.35)",
+                label_text: "#a5f3fc",
+            },
+            AgentEdgeKind::WorksWithHint => EdgeStyle {
+                css_name: "works_with_hint",
+                family: "metadata_hint",
+                label: "Works with",
+                lane: -1,
+                stroke: "#c084fc",
+                stroke_width: "2.5",
+                stroke_dasharray: "7 9",
+                label_fill: "rgba(147,51,234,0.16)",
+                label_stroke: "rgba(216,180,254,0.35)",
+                label_text: "#e9d5ff",
+            },
+            AgentEdgeKind::DelegatesToHint => EdgeStyle {
+                css_name: "delegates_to_hint",
+                family: "metadata_hint",
+                label: "Delegates",
+                lane: 1,
+                stroke: "#f59e0b",
+                stroke_width: "2.5",
+                stroke_dasharray: "10 7",
+                label_fill: "rgba(217,119,6,0.16)",
+                label_stroke: "rgba(251,191,36,0.35)",
+                label_text: "#fde68a",
+            },
         }
     }
+}
 
-    fn css_name(&self) -> &'static str {
-        match self {
-            AgentEdgeKind::RoutesTo => "routes_to",
-            AgentEdgeKind::WorksWithHint => "works_with_hint",
-            AgentEdgeKind::DelegatesToHint => "delegates_to_hint",
-        }
+impl RenderedEdge {
+    fn from_edge(edge: &AgentEdge, positioned_nodes: &[PositionedNode]) -> Option<Self> {
+        let (source, target) = resolve_edge_nodes(
+            positioned_nodes,
+            edge.source_id.as_str(),
+            edge.target_id.as_str(),
+        )?;
+        let style = edge.kind.style();
+        let label_x = (source.x + NODE_WIDTH + target.x) / 2.0;
+        let label_y = ((source.mid_y() + target.mid_y()) / 2.0)
+            + Self::lane_label_offset(style.lane, source.mid_y(), target.mid_y());
+
+        Some(Self {
+            kind: edge.kind.clone(),
+            style,
+            path: Self::path(source, target, style.lane),
+            label: style.label,
+            label_x,
+            label_y,
+            lane: style.lane,
+        })
     }
 
-    fn label(&self) -> &'static str {
-        match self {
-            AgentEdgeKind::RoutesTo => "Routes",
-            AgentEdgeKind::WorksWithHint => "Works with",
-            AgentEdgeKind::DelegatesToHint => "Delegates",
-        }
+    fn path(source: &PositionedNode, target: &PositionedNode, lane: i32) -> String {
+        let start_x = source.x + NODE_WIDTH;
+        let start_y = source.mid_y();
+        let end_x = target.x;
+        let end_y = target.mid_y();
+        let midpoint_x = (start_x + end_x) / 2.0;
+        let curvature = Self::lane_curvature(lane, start_y, end_y);
+        let control_y1 = start_y + curvature;
+        let control_y2 = end_y - curvature;
+
+        format!(
+            "M {start_x:.1} {start_y:.1} C {midpoint_x:.1} {control_y1:.1}, {midpoint_x:.1} {control_y2:.1}, {end_x:.1} {end_y:.1}"
+        )
     }
 
-    fn lane(&self) -> i32 {
-        match self {
-            AgentEdgeKind::RoutesTo => 0,
-            AgentEdgeKind::WorksWithHint => -1,
-            AgentEdgeKind::DelegatesToHint => 1,
-        }
+    fn lane_curvature(lane: i32, start_y: f32, end_y: f32) -> f32 {
+        let separation = (end_y - start_y).abs();
+        let base = if separation < 4.0 { 92.0 } else { 42.0 };
+        lane as f32 * base
     }
 
-    fn stroke(&self) -> &'static str {
-        match self {
-            AgentEdgeKind::RoutesTo => "#67e8f9",
-            AgentEdgeKind::WorksWithHint => "#c084fc",
-            AgentEdgeKind::DelegatesToHint => "#f59e0b",
-        }
+    fn lane_label_offset(lane: i32, start_y: f32, end_y: f32) -> f32 {
+        let separation = (end_y - start_y).abs();
+        let base = if separation < 4.0 { 36.0 } else { 22.0 };
+        lane as f32 * base
     }
 
-    fn stroke_width(&self) -> &'static str {
-        match self {
-            AgentEdgeKind::RoutesTo => "3",
-            AgentEdgeKind::WorksWithHint => "2.5",
-            AgentEdgeKind::DelegatesToHint => "2.5",
-        }
+    fn label_width(&self) -> f32 {
+        (self.label.chars().count() as f32 * 7.4).max(62.0) + 24.0
     }
+}
 
-    fn stroke_dasharray(&self) -> &'static str {
-        match self {
-            AgentEdgeKind::RoutesTo => "0",
-            AgentEdgeKind::WorksWithHint => "7 9",
-            AgentEdgeKind::DelegatesToHint => "10 7",
-        }
-    }
-
-    fn label_fill(&self) -> &'static str {
-        match self {
-            AgentEdgeKind::RoutesTo => "rgba(8,145,178,0.18)",
-            AgentEdgeKind::WorksWithHint => "rgba(147,51,234,0.16)",
-            AgentEdgeKind::DelegatesToHint => "rgba(217,119,6,0.16)",
-        }
-    }
-
-    fn label_stroke(&self) -> &'static str {
-        match self {
-            AgentEdgeKind::RoutesTo => "rgba(103,232,249,0.35)",
-            AgentEdgeKind::WorksWithHint => "rgba(216,180,254,0.35)",
-            AgentEdgeKind::DelegatesToHint => "rgba(251,191,36,0.35)",
-        }
-    }
-
-    fn label_text(&self) -> &'static str {
-        match self {
-            AgentEdgeKind::RoutesTo => "#a5f3fc",
-            AgentEdgeKind::WorksWithHint => "#e9d5ff",
-            AgentEdgeKind::DelegatesToHint => "#fde68a",
-        }
+impl PositionedNode {
+    fn mid_y(&self) -> f32 {
+        self.y + (NODE_HEIGHT / 2.0)
     }
 }
 
