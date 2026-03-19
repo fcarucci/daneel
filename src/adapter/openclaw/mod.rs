@@ -63,7 +63,7 @@ impl GatewayAdapter for OpenClawAdapter {
         let payload = fetch_connect_payload("connect-list-bindings-1").await?;
         let bindings = snapshot_bindings(&payload)?;
 
-        normalize_binding_edges(bindings)
+        normalize_binding_edges(&bindings)
     }
 
     async fn list_active_sessions(&self) -> Result<Vec<ActiveSessionRecord>, String> {

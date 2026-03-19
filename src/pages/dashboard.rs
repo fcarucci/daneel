@@ -3,14 +3,24 @@
 use dioxus::prelude::*;
 
 use crate::client::use_app_client;
-use crate::models::gateway::{GatewayLevel, GatewayStatusSnapshot};
+use crate::components::graph_canvas::GraphCanvas;
+use crate::models::{
+    gateway::{GatewayLevel, GatewayStatusSnapshot},
+    graph::AgentGraphSnapshot,
+};
 
 #[component]
 pub fn Dashboard() -> Element {
     let client = use_app_client();
+    let gateway_client = client.clone();
+    let graph_client = client.clone();
     let gateway_status = use_resource(move || {
-        let client = client.clone();
+        let client = gateway_client.clone();
         async move { client.get_gateway_status().await }
+    });
+    let graph_snapshot = use_resource(move || {
+        let client = graph_client.clone();
+        async move { client.get_agent_graph_snapshot().await }
     });
 
     rsx! {
@@ -22,21 +32,51 @@ pub fn Dashboard() -> Element {
                     "This initial shell gives us a typed routing foundation, a shared layout, and room for the first adapter-backed dashboard queries."
                 }
             }
-            div { class: "grid grid-cols-1 gap-4 xl:grid-cols-3",
-                article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
-                    h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Gateway status" }
-                    GatewayStatusCard { gateway_status }
+            div { class: "grid grid-cols-1 gap-4 xl:grid-cols-[minmax(19rem,0.85fr)_minmax(0,1.15fr)_minmax(0,1.15fr)]",
+                div { class: "flex flex-col gap-4 xl:col-span-1",
+                    article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+                        h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Gateway status" }
+                        GatewayStatusCard { gateway_status }
+                    }
+                    article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+                        h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Activity feed" }
+                        p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Live event transport is intentionally deferred until after the first request-response slice." }
+                    }
                 }
-                article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+                article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl xl:col-span-2",
                     h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Agents graph" }
-                    p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "The deterministic SVG graph will land in this route next." }
-                }
-                article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
-                    h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Activity feed" }
-                    p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Live event transport is intentionally deferred until after the first request-response slice." }
+                    GraphSnapshotCard { graph_snapshot }
                 }
             }
         }
+    }
+}
+
+#[component]
+fn GraphSnapshotCard(
+    graph_snapshot: Resource<Result<AgentGraphSnapshot, ServerFnError>>,
+) -> Element {
+    match &*graph_snapshot.read_unchecked() {
+        Some(Ok(snapshot)) => rsx! {
+            p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Deterministic first-slice graph layout from the latest assembled gateway snapshot." }
+            div { class: "mt-4",
+                GraphCanvas { snapshot: snapshot.clone() }
+            }
+        },
+        Some(Err(error)) => rsx! {
+            p { class: "m-0 mt-3 text-sm leading-6 text-amber-400", "Graph snapshot unavailable: {error}" }
+            button {
+                class: "mt-4 inline-flex items-center rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-medium text-slate-100 transition hover:border-white/20 hover:bg-white/8",
+                onclick: move |_| {
+                    let mut graph_snapshot = graph_snapshot;
+                    graph_snapshot.restart();
+                },
+                "Retry graph"
+            }
+        },
+        None => rsx! {
+            p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Loading the latest graph snapshot from Daneel's graph assembly service..." }
+        },
     }
 }
 

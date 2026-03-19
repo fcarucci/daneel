@@ -24,11 +24,12 @@ pub(super) fn snapshot_agents(payload: &Value) -> Result<&Vec<Value>, String> {
         .ok_or_else(|| "Gateway health snapshot did not include agents.".to_string())
 }
 
-pub(super) fn snapshot_bindings(payload: &Value) -> Result<&Vec<Value>, String> {
-    snapshot_health(payload)?
+pub(super) fn snapshot_bindings(payload: &Value) -> Result<Vec<Value>, String> {
+    Ok(snapshot_health(payload)?
         .get("bindings")
         .and_then(Value::as_array)
-        .ok_or_else(|| "Gateway health snapshot did not include bindings.".to_string())
+        .cloned()
+        .unwrap_or_default())
 }
 
 fn explicit_active_sessions(health: &serde_json::Map<String, Value>) -> Option<&Vec<Value>> {
