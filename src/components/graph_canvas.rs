@@ -1,0 +1,439 @@
+// SPDX-License-Identifier: Apache-2.0
+
+use dioxus::prelude::*;
+
+use crate::models::graph::{AgentEdgeKind, AgentGraphSnapshot, AgentNode, AgentStatus};
+
+const CANVAS_WIDTH: f32 = 1840.0;
+const NODE_WIDTH: f32 = 352.0;
+const NODE_HEIGHT: f32 = 184.0;
+const HORIZONTAL_MARGIN: f32 = 48.0;
+const VERTICAL_MARGIN: f32 = 24.0;
+const ROW_GAP: f32 = 56.0;
+const MAX_LABEL_CHARS: usize = 18;
+
+#[derive(Clone, Debug, PartialEq)]
+struct PositionedNode {
+    node: AgentNode,
+    x: f32,
+    y: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct GraphLayoutMetrics {
+    canvas_height: f32,
+    column_count: usize,
+    row_count: usize,
+}
+
+#[component]
+pub fn GraphCanvas(snapshot: AgentGraphSnapshot) -> Element {
+    if snapshot.nodes.is_empty() {
+        return rsx! {
+            div {
+                class: "rounded-[1.5rem] border border-dashed border-white/10 bg-slate-950/25 px-5 py-8 text-center",
+                p { class: "m-0 text-sm font-semibold uppercase tracking-[0.24em] text-slate-500", "Graph idle" }
+                p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "No agents are available in the current graph snapshot yet." }
+            }
+        };
+    }
+
+    let layout = graph_layout_metrics(&snapshot);
+    let positioned_nodes = layout_graph_nodes(&snapshot, layout);
+
+    rsx! {
+        div { class: "overflow-hidden rounded-[1.5rem] border border-white/8 bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.08),transparent_35%),linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,23,0.98))]",
+            svg {
+                class: "block h-auto w-full",
+                view_box: format!("0 0 {} {}", CANVAS_WIDTH, layout.canvas_height),
+                role: "img",
+                "aria-label": "Agent graph canvas",
+                for edge in snapshot.edges.iter() {
+                    if let Some((source, target)) = resolve_edge_nodes(&positioned_nodes, edge.source_id.as_str(), edge.target_id.as_str()) {
+                        path {
+                            "data-agent-edge": edge.kind.css_name(),
+                            d: edge_path(source, target),
+                            fill: "none",
+                            stroke: edge.kind.stroke(),
+                            stroke_width: edge.kind.stroke_width(),
+                            stroke_dasharray: edge.kind.stroke_dasharray(),
+                            stroke_linecap: "round",
+                            opacity: "0.92",
+                        }
+                    }
+                }
+                for positioned in positioned_nodes.iter() {
+                    g {
+                        "data-agent-node": positioned.node.id.as_str(),
+                        transform: format!("translate({} {})", positioned.x, positioned.y),
+                        rect {
+                            width: NODE_WIDTH,
+                            height: NODE_HEIGHT,
+                            rx: "28",
+                            fill: node_fill(&positioned.node.status),
+                            stroke: node_stroke(&positioned.node.status),
+                            stroke_width: "1.5",
+                        }
+                        rect {
+                            x: "1",
+                            y: "1",
+                            width: NODE_WIDTH - 2.0,
+                            height: NODE_HEIGHT - 2.0,
+                            rx: "27",
+                            fill: "none",
+                            stroke: "rgba(255,255,255,0.06)",
+                            stroke_width: "1",
+                        }
+                        circle {
+                            cx: "34",
+                            cy: "34",
+                            r: "12",
+                            fill: node_signal(&positioned.node.status),
+                        }
+                        text {
+                            x: "68",
+                            y: "50",
+                            fill: "#f8fafc",
+                            font_size: "30",
+                            font_weight: "600",
+                            letter_spacing: "-0.02em",
+                            {truncated_graph_label(positioned.node.name.as_str())}
+                        }
+                        text {
+                            x: "34",
+                            y: "108",
+                            fill: "#94a3b8",
+                            font_size: "21",
+                            font_weight: "600",
+                            letter_spacing: "0.16em",
+                            {status_label(&positioned.node.status)}
+                        }
+                        text {
+                            x: "34",
+                            y: "150",
+                            fill: "#cbd5e1",
+                            font_size: "22",
+                            "Latest: "
+                            {activity_label(&positioned.node)}
+                        }
+                        if positioned.node.is_default {
+                            g { "data-agent-default-badge": positioned.node.id.as_str(),
+                                rect {
+                                    x: NODE_WIDTH - 150.0,
+                                    y: "62",
+                                    width: "116",
+                                    height: "30",
+                                    rx: "17",
+                                    fill: "rgba(34,211,238,0.12)",
+                                    stroke: "rgba(103,232,249,0.3)",
+                                    stroke_width: "1.5",
+                                }
+                                text {
+                                    x: NODE_WIDTH - 92.0,
+                                    y: "82",
+                                    fill: "#67e8f9",
+                                    font_size: "15",
+                                    font_weight: "700",
+                                    letter_spacing: "0.18em",
+                                    text_anchor: "middle",
+                                    "DEFAULT"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn graph_layout_metrics(snapshot: &AgentGraphSnapshot) -> GraphLayoutMetrics {
+    let node_count = snapshot.nodes.len().max(1);
+    let column_count = match node_count {
+        0..=2 => node_count,
+        3..=9 => 3,
+        _ => 4,
+    }
+    .max(1);
+    let row_count = node_count.div_ceil(column_count);
+
+    let canvas_height = (VERTICAL_MARGIN * 2.0)
+        + (row_count as f32 * NODE_HEIGHT)
+        + ((row_count - 1) as f32 * ROW_GAP);
+
+    GraphLayoutMetrics {
+        canvas_height,
+        column_count,
+        row_count,
+    }
+}
+
+fn layout_graph_nodes(
+    snapshot: &AgentGraphSnapshot,
+    layout: GraphLayoutMetrics,
+) -> Vec<PositionedNode> {
+    let horizontal_gap = if layout.column_count > 1 {
+        (CANVAS_WIDTH - NODE_WIDTH - (HORIZONTAL_MARGIN * 2.0)) / (layout.column_count - 1) as f32
+    } else {
+        0.0
+    };
+    let vertical_gap = if layout.row_count > 1 { ROW_GAP } else { 0.0 };
+
+    snapshot
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| {
+            let column = index % layout.column_count;
+            let row = index / layout.column_count;
+            let x = if layout.column_count == 1 {
+                (CANVAS_WIDTH - NODE_WIDTH) / 2.0
+            } else {
+                HORIZONTAL_MARGIN + column as f32 * horizontal_gap
+            };
+            let y = if layout.row_count == 1 {
+                VERTICAL_MARGIN
+            } else {
+                VERTICAL_MARGIN + row as f32 * (NODE_HEIGHT + vertical_gap)
+            };
+
+            PositionedNode {
+                node: node.clone(),
+                x,
+                y,
+            }
+        })
+        .collect()
+}
+
+fn resolve_edge_nodes<'a>(
+    positioned_nodes: &'a [PositionedNode],
+    source_id: &str,
+    target_id: &str,
+) -> Option<(&'a PositionedNode, &'a PositionedNode)> {
+    let source = positioned_nodes
+        .iter()
+        .find(|positioned| positioned.node.id == source_id)?;
+    let target = positioned_nodes
+        .iter()
+        .find(|positioned| positioned.node.id == target_id)?;
+
+    Some((source, target))
+}
+
+fn edge_path(source: &PositionedNode, target: &PositionedNode) -> String {
+    let start_x = source.x + NODE_WIDTH;
+    let start_y = source.y + (NODE_HEIGHT / 2.0);
+    let end_x = target.x;
+    let end_y = target.y + (NODE_HEIGHT / 2.0);
+    let midpoint_x = (start_x + end_x) / 2.0;
+
+    format!(
+        "M {start_x:.1} {start_y:.1} C {midpoint_x:.1} {start_y:.1}, {midpoint_x:.1} {end_y:.1}, {end_x:.1} {end_y:.1}"
+    )
+}
+
+fn truncated_graph_label(name: &str) -> String {
+    let grapheme_count = name.chars().count();
+    if grapheme_count <= MAX_LABEL_CHARS {
+        return name.to_string();
+    }
+
+    let mut truncated = name.chars().take(MAX_LABEL_CHARS - 1).collect::<String>();
+    truncated.push('…');
+    truncated
+}
+
+fn status_label(status: &AgentStatus) -> &'static str {
+    match status {
+        AgentStatus::Active => "ACTIVE",
+        AgentStatus::Idle => "IDLE",
+        AgentStatus::Unknown => "UNKNOWN",
+    }
+}
+
+fn activity_label(node: &AgentNode) -> String {
+    match node.latest_activity_age_ms {
+        Some(age_ms) if age_ms < 60_000 => format!("{}s ago", age_ms / 1_000),
+        Some(age_ms) if age_ms < 3_600_000 => format!("{}m ago", age_ms / 60_000),
+        Some(age_ms) => format!("{}h ago", age_ms / 3_600_000),
+        None => "No activity".to_string(),
+    }
+}
+
+fn node_fill(status: &AgentStatus) -> &'static str {
+    match status {
+        AgentStatus::Active => "rgba(6, 78, 59, 0.82)",
+        AgentStatus::Idle => "rgba(15, 23, 42, 0.96)",
+        AgentStatus::Unknown => "rgba(30, 41, 59, 0.92)",
+    }
+}
+
+fn node_stroke(status: &AgentStatus) -> &'static str {
+    match status {
+        AgentStatus::Active => "rgba(110, 231, 183, 0.6)",
+        AgentStatus::Idle => "rgba(148, 163, 184, 0.32)",
+        AgentStatus::Unknown => "rgba(251, 191, 36, 0.34)",
+    }
+}
+
+fn node_signal(status: &AgentStatus) -> &'static str {
+    match status {
+        AgentStatus::Active => "#6ee7b7",
+        AgentStatus::Idle => "#94a3b8",
+        AgentStatus::Unknown => "#fbbf24",
+    }
+}
+
+impl AgentEdgeKind {
+    fn css_name(&self) -> &'static str {
+        match self {
+            AgentEdgeKind::RoutesTo => "routes_to",
+            AgentEdgeKind::WorksWithHint => "works_with_hint",
+            AgentEdgeKind::DelegatesToHint => "delegates_to_hint",
+        }
+    }
+
+    fn stroke(&self) -> &'static str {
+        match self {
+            AgentEdgeKind::RoutesTo => "#67e8f9",
+            AgentEdgeKind::WorksWithHint => "#c084fc",
+            AgentEdgeKind::DelegatesToHint => "#f59e0b",
+        }
+    }
+
+    fn stroke_width(&self) -> &'static str {
+        match self {
+            AgentEdgeKind::RoutesTo => "3",
+            AgentEdgeKind::WorksWithHint => "2.5",
+            AgentEdgeKind::DelegatesToHint => "2.5",
+        }
+    }
+
+    fn stroke_dasharray(&self) -> &'static str {
+        match self {
+            AgentEdgeKind::RoutesTo => "0",
+            AgentEdgeKind::WorksWithHint => "7 9",
+            AgentEdgeKind::DelegatesToHint => "10 7",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::graph::{AgentEdge, AgentGraphSnapshot};
+
+    #[component]
+    fn GraphCanvasHarness(snapshot: AgentGraphSnapshot) -> Element {
+        rsx! { GraphCanvas { snapshot } }
+    }
+
+    fn render_graph(snapshot: AgentGraphSnapshot) -> String {
+        let mut dom =
+            VirtualDom::new_with_props(GraphCanvasHarness, GraphCanvasHarnessProps { snapshot });
+        dom.rebuild_in_place();
+        dioxus_ssr::render(&dom)
+    }
+
+    fn node(id: &str, name: &str, status: AgentStatus) -> AgentNode {
+        AgentNode {
+            id: id.to_string(),
+            name: name.to_string(),
+            is_default: id == "planner",
+            heartbeat_enabled: true,
+            heartbeat_schedule: "every 5m".to_string(),
+            active_session_count: if status == AgentStatus::Active { 1 } else { 0 },
+            latest_activity_age_ms: Some(45_000),
+            status,
+        }
+    }
+
+    fn fixture_snapshot() -> AgentGraphSnapshot {
+        AgentGraphSnapshot {
+            nodes: vec![
+                node("calendar", "calendar", AgentStatus::Idle),
+                node("email", "email", AgentStatus::Active),
+                node("planner", "planner", AgentStatus::Active),
+            ],
+            edges: vec![
+                AgentEdge {
+                    source_id: "planner".to_string(),
+                    target_id: "email".to_string(),
+                    kind: AgentEdgeKind::RoutesTo,
+                },
+                AgentEdge {
+                    source_id: "planner".to_string(),
+                    target_id: "calendar".to_string(),
+                    kind: AgentEdgeKind::DelegatesToHint,
+                },
+            ],
+            snapshot_ts: 1_640_995_200_000,
+        }
+    }
+
+    #[test]
+    fn graph_renders_the_expected_number_of_nodes_and_edges() {
+        let html = render_graph(fixture_snapshot());
+
+        assert_eq!(html.matches("data-agent-node=").count(), 3);
+        assert_eq!(html.matches("data-agent-edge=").count(), 2);
+        assert!(html.contains("Agent graph canvas"));
+    }
+
+    #[test]
+    fn empty_graph_state_renders_gracefully() {
+        let html = render_graph(AgentGraphSnapshot {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            snapshot_ts: 1,
+        });
+
+        assert!(html.contains("Graph idle"));
+        assert!(html.contains("No agents are available in the current graph snapshot yet."));
+    }
+
+    #[test]
+    fn graph_layout_is_stable_for_the_same_snapshot() {
+        let snapshot = fixture_snapshot();
+
+        let layout = graph_layout_metrics(&snapshot);
+        let first = layout_graph_nodes(&snapshot, layout);
+        let second = layout_graph_nodes(&snapshot, layout);
+
+        assert_eq!(first, second);
+        assert_eq!(layout.canvas_height, 232.0);
+        assert_eq!(first[0].x, 48.0);
+        assert_eq!(first[0].y, 24.0);
+        assert_eq!(first[1].x, 744.0);
+        assert_eq!(first[2].x, 1440.0);
+    }
+
+    #[test]
+    fn large_labels_are_truncated_for_the_canvas() {
+        let html = render_graph(AgentGraphSnapshot {
+            nodes: vec![node(
+                "ops",
+                "this-agent-name-is-way-too-long-for-the-first-slice",
+                AgentStatus::Active,
+            )],
+            edges: Vec::new(),
+            snapshot_ts: 1,
+        });
+
+        assert!(html.contains("this-agent-name-i…"));
+        assert!(!html.contains("this-agent-name-is-way-too-long-for-the-first-slice"));
+    }
+
+    #[test]
+    fn default_badge_renders_as_a_separate_chip() {
+        let html = render_graph(AgentGraphSnapshot {
+            nodes: vec![node("planner", "planner", AgentStatus::Active)],
+            edges: Vec::new(),
+            snapshot_ts: 1,
+        });
+
+        assert!(html.contains("data-agent-default-badge=\"planner\""));
+        assert!(html.contains(">DEFAULT<"));
+    }
+}

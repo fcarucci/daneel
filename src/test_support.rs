@@ -43,6 +43,8 @@ mod tests {
 
         assert!(html.contains("Gateway overview and graph surfaces start here."));
         assert!(html.contains("Gateway status"));
+        assert!(html.contains("Agents graph"));
+        assert!(html.contains("Loading the latest graph snapshot from Daneel"));
     }
 
     #[test]

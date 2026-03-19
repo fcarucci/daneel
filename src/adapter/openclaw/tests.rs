@@ -558,6 +558,33 @@ async fn list_agent_bindings_reads_edges_from_gateway_snapshot() {
 
 #[tokio::test]
 #[serial]
+async fn list_agent_bindings_returns_empty_when_bindings_are_missing() {
+    let gateway = MockGateway::spawn(gateway_snapshot_payload_with_sessions(
+        json!([
+            { "agentId": "main" }
+        ]),
+        serde_json::Value::Null,
+        serde_json::Value::Null,
+    ))
+    .expect("spawn mock gateway");
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path =
+        write_openclaw_config(tempdir.path(), gateway.addr.port()).expect("write openclaw config");
+    let _guard = EnvVarGuard::set(
+        "OPENCLAW_CONFIG_PATH",
+        config_path.to_str().expect("config path as utf-8"),
+    );
+
+    let edges = OpenClawAdapter
+        .list_agent_bindings()
+        .await
+        .expect("list bindings through gateway without bindings block");
+
+    assert!(edges.is_empty());
+}
+
+#[tokio::test]
+#[serial]
 async fn list_active_sessions_reads_sessions_from_gateway_snapshot() {
     let gateway = MockGateway::spawn(gateway_snapshot_payload_with_sessions(
         json!([]),
