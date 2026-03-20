@@ -42,23 +42,6 @@ fn AgentOverviewSection(
 ) -> Element {
     match &*agent_overview.read_unchecked() {
         Some(Ok(snapshot)) => rsx! {
-            div { class: "grid grid-cols-1 gap-4 xl:grid-cols-3",
-                MetricCard {
-                    label: "Configured agents",
-                    value: snapshot.total_agents.to_string(),
-                    detail: "".to_string(),
-                }
-                MetricCard {
-                    label: "Active sessions",
-                    value: snapshot.total_active_sessions.to_string(),
-                    detail: "".to_string(),
-                }
-                MetricCard {
-                    label: "Recently active",
-                    value: snapshot.active_recent_agents.to_string(),
-                    detail: "".to_string(),
-                }
-            }
             div { class: "mt-2 flex items-center gap-3",
                 p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-slate-400", "Agent tiles" }
                 p { class: "m-0 text-sm text-slate-400", "{snapshot.active_recent_agents}/{snapshot.total_agents} active in the last 10 minutes" }
@@ -89,19 +72,6 @@ fn AgentOverviewSection(
                 p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Requesting the current agent inventory from the OpenClaw gateway snapshot..." }
             }
         },
-    }
-}
-
-#[component]
-fn MetricCard(label: String, value: String, detail: String) -> Element {
-    rsx! {
-        article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
-            p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--signal)]", "{label}" }
-            p { class: "m-0 mt-3 text-3xl font-semibold tracking-[-0.05em] text-white", "{value}" }
-            if !detail.is_empty() {
-                p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "{detail}" }
-            }
-        }
     }
 }
 

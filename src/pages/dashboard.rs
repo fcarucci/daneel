@@ -4,10 +4,22 @@ use dioxus::prelude::*;
 
 use crate::client::use_app_client;
 use crate::components::graph_canvas::GraphCanvas;
+use crate::graph_service::{GraphAssemblySummary, summarize_graph_snapshot};
 use crate::models::{
     gateway::{GatewayLevel, GatewayStatusSnapshot},
     graph::AgentGraphSnapshot,
 };
+
+#[cfg(test)]
+use crate::models::graph::{AgentNode, AgentStatus};
+
+#[derive(Clone, Debug, PartialEq)]
+struct SummaryCardModel {
+    title: &'static str,
+    value: String,
+    detail: String,
+    accent_class: &'static str,
+}
 
 #[component]
 pub fn Dashboard() -> Element {
@@ -32,6 +44,7 @@ pub fn Dashboard() -> Element {
                     "This initial shell gives us a typed routing foundation, a shared layout, and room for the first adapter-backed dashboard queries."
                 }
             }
+            DashboardSummaryRow { gateway_status: gateway_status.clone(), graph_snapshot: graph_snapshot.clone() }
             div { class: "grid grid-cols-1 gap-4 xl:grid-cols-[minmax(19rem,0.85fr)_minmax(0,1.15fr)_minmax(0,1.15fr)]",
                 div { class: "flex flex-col gap-4 xl:col-span-1",
                     article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
@@ -48,6 +61,49 @@ pub fn Dashboard() -> Element {
                     GraphSnapshotCard { graph_snapshot }
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn DashboardSummaryRow(
+    gateway_status: Resource<Result<GatewayStatusSnapshot, ServerFnError>>,
+    graph_snapshot: Resource<Result<AgentGraphSnapshot, ServerFnError>>,
+) -> Element {
+    let cards = build_summary_cards(
+        gateway_status.read_unchecked().as_ref(),
+        graph_snapshot.read_unchecked().as_ref(),
+    );
+    let [
+        gateway_card,
+        agents_card,
+        active_agents_card,
+        connections_card,
+    ] = cards;
+
+    rsx! {
+        div { class: "grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(19rem,0.85fr)_minmax(0,1.15fr)_minmax(0,1.15fr)]",
+            div { class: "xl:col-span-1",
+                SummaryCard { card: gateway_card }
+            }
+            div { class: "min-w-0 grid items-start gap-4 sm:grid-cols-2 xl:col-span-2 xl:grid-cols-3",
+                SummaryCard { card: agents_card }
+                SummaryCard { card: active_agents_card }
+                SummaryCard { card: connections_card }
+            }
+        }
+    }
+}
+
+#[component]
+fn SummaryCard(card: SummaryCardModel) -> Element {
+    rsx! {
+        article {
+            class: "min-w-0 h-[14rem] rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+            "data-summary-card": card.title,
+            p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400", "{card.title}" }
+            p { class: format!("m-0 mt-4 text-3xl font-semibold tracking-[-0.05em] {}", card.accent_class), "{card.value}" }
+            p { class: "m-0 mt-2 text-sm leading-6 text-slate-300", "{card.detail}" }
         }
     }
 }
@@ -133,5 +189,177 @@ fn GatewayStatusCard(
         None => rsx! {
             p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Contacting the OpenClaw Gateway through Daneel's server function..." }
         },
+    }
+}
+
+fn gateway_summary_card(
+    gateway_status: Option<&Result<GatewayStatusSnapshot, ServerFnError>>,
+) -> SummaryCardModel {
+    match gateway_status {
+        Some(Ok(snapshot)) => SummaryCardModel {
+            title: "Gateway",
+            value: match snapshot.level {
+                GatewayLevel::Healthy => "Healthy".to_string(),
+                GatewayLevel::Degraded => "Degraded".to_string(),
+            },
+            detail: snapshot.summary.clone(),
+            accent_class: match snapshot.level {
+                GatewayLevel::Healthy => "text-emerald-200",
+                GatewayLevel::Degraded => "text-amber-300",
+            },
+        },
+        Some(Err(error)) => SummaryCardModel {
+            title: "Gateway",
+            value: "Unavailable".to_string(),
+            detail: format!("Gateway lookup failed: {error}"),
+            accent_class: "text-amber-300",
+        },
+        None => SummaryCardModel {
+            title: "Gateway",
+            value: "Loading".to_string(),
+            detail: "Fetching the latest gateway health snapshot.".to_string(),
+            accent_class: "text-slate-200",
+        },
+    }
+}
+
+fn build_summary_cards(
+    gateway_status: Option<&Result<GatewayStatusSnapshot, ServerFnError>>,
+    graph_snapshot: Option<&Result<AgentGraphSnapshot, ServerFnError>>,
+) -> [SummaryCardModel; 4] {
+    let gateway = gateway_summary_card(gateway_status);
+    let graph_summary = graph_summary_model(graph_snapshot);
+
+    [
+        gateway,
+        SummaryCardModel {
+            title: "Agents",
+            value: graph_summary.agent_count.to_string(),
+            detail: "Known nodes in the assembled snapshot.".to_string(),
+            accent_class: "text-sky-200",
+        },
+        SummaryCardModel {
+            title: "Active agents",
+            value: graph_summary.active_agent_count.to_string(),
+            detail: "Nodes currently marked active by session state.".to_string(),
+            accent_class: "text-emerald-200",
+        },
+        SummaryCardModel {
+            title: "Connections",
+            value: graph_summary.edge_count.to_string(),
+            detail: "Rendered relationships across routes and hints.".to_string(),
+            accent_class: "text-violet-200",
+        },
+    ]
+}
+
+fn graph_summary_model(
+    graph_snapshot: Option<&Result<AgentGraphSnapshot, ServerFnError>>,
+) -> GraphAssemblySummary {
+    match graph_snapshot {
+        Some(Ok(snapshot)) => summarize_graph_snapshot(snapshot),
+        Some(Err(_)) | None => GraphAssemblySummary::default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[component]
+    fn SummaryRowHarness(
+        gateway_status: Option<Result<GatewayStatusSnapshot, ServerFnError>>,
+        graph_snapshot: Option<Result<AgentGraphSnapshot, ServerFnError>>,
+    ) -> Element {
+        let cards = build_summary_cards(gateway_status.as_ref(), graph_snapshot.as_ref());
+
+        rsx! {
+            div {
+                for card in cards {
+                    SummaryCard { card }
+                }
+            }
+        }
+    }
+
+    fn render_summary_row(
+        gateway_status: Option<Result<GatewayStatusSnapshot, ServerFnError>>,
+        graph_snapshot: Option<Result<AgentGraphSnapshot, ServerFnError>>,
+    ) -> String {
+        let mut dom = VirtualDom::new_with_props(
+            SummaryRowHarness,
+            SummaryRowHarnessProps {
+                gateway_status,
+                graph_snapshot,
+            },
+        );
+        dom.rebuild_in_place();
+        dioxus_ssr::render(&dom)
+    }
+
+    #[test]
+    fn summary_values_match_the_snapshot_fixture() {
+        let html = render_summary_row(
+            Some(Ok(GatewayStatusSnapshot {
+                connected: true,
+                level: GatewayLevel::Healthy,
+                summary: "Gateway connected".to_string(),
+                detail: "healthy detail".to_string(),
+                gateway_url: "ws://127.0.0.1:18789/".to_string(),
+                protocol_version: Some(1),
+                state_version: Some(7),
+                uptime_ms: Some(12_000),
+            })),
+            Some(Ok(AgentGraphSnapshot {
+                nodes: vec![
+                    graph_node("calendar", AgentStatus::Active),
+                    graph_node("planner", AgentStatus::Idle),
+                ],
+                edges: vec![crate::models::graph::AgentEdge {
+                    source_id: "calendar".to_string(),
+                    target_id: "planner".to_string(),
+                    kind: crate::models::graph::AgentEdgeKind::RoutesTo,
+                }],
+                snapshot_ts: 1,
+            })),
+        );
+
+        assert!(html.contains("data-summary-card=\"Gateway\""));
+        assert!(html.contains(">Healthy<"));
+        assert!(html.contains("data-summary-card=\"Agents\""));
+        assert!(html.contains(">2<"));
+        assert!(html.contains("data-summary-card=\"Active agents\""));
+        assert!(html.contains(">1<"));
+        assert!(html.contains("data-summary-card=\"Connections\""));
+    }
+
+    #[test]
+    fn degraded_gateway_state_is_reflected_in_the_status_summary_card() {
+        let html = render_summary_row(
+            Some(Ok(GatewayStatusSnapshot::degraded(
+                "ws://127.0.0.1:18789/".to_string(),
+                "Gateway degraded",
+                "detail",
+            ))),
+            None,
+        );
+
+        assert!(html.contains("data-summary-card=\"Gateway\""));
+        assert!(html.contains(">Degraded<"));
+        assert!(html.contains("Gateway degraded"));
+        assert!(html.contains("text-amber-300"));
+    }
+
+    fn graph_node(id: &str, status: AgentStatus) -> AgentNode {
+        AgentNode {
+            id: id.to_string(),
+            name: id.to_string(),
+            is_default: false,
+            heartbeat_enabled: true,
+            heartbeat_schedule: "*/5 * * * *".to_string(),
+            active_session_count: matches!(status, AgentStatus::Active) as u64,
+            latest_activity_age_ms: Some(60_000),
+            status,
+        }
     }
 }
