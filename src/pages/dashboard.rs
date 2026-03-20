@@ -112,15 +112,22 @@ fn SummaryCard(card: SummaryCardModel) -> Element {
 fn GraphSnapshotCard(
     graph_snapshot: Resource<Result<AgentGraphSnapshot, ServerFnError>>,
 ) -> Element {
-    match &*graph_snapshot.read_unchecked() {
-        Some(Ok(snapshot)) => rsx! {
+    match graph_snapshot_view(graph_snapshot.read_unchecked().as_ref()) {
+        GraphSnapshotView::Ready(snapshot) => rsx! {
             p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Deterministic first-slice graph layout from the latest assembled gateway snapshot." }
             div { class: "mt-4",
-                GraphCanvas { snapshot: snapshot.clone() }
+                GraphCanvas { snapshot }
             }
         },
-        Some(Err(error)) => rsx! {
+        GraphSnapshotView::Empty => rsx! {
+            div { class: "mt-3 rounded-[1.3rem] border border-white/10 bg-white/[0.04] px-5 py-5 text-slate-300",
+                p { class: "m-0 text-sm font-medium text-white", "Nothing to show yet" }
+                p { class: "m-0 mt-2 text-sm leading-6 text-slate-300", "The graph snapshot loaded, but there are no assembled nodes yet. Gateway summaries remain available above." }
+            }
+        },
+        GraphSnapshotView::Error(error) => rsx! {
             p { class: "m-0 mt-3 text-sm leading-6 text-amber-400", "Graph snapshot unavailable: {error}" }
+            p { class: "m-0 mt-2 text-sm leading-6 text-slate-300", "The dashboard will keep any available gateway and summary data visible while graph loading recovers." }
             button {
                 class: "mt-4 inline-flex items-center rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-medium text-slate-100 transition hover:border-white/20 hover:bg-white/8",
                 onclick: move |_| {
@@ -130,9 +137,27 @@ fn GraphSnapshotCard(
                 "Retry graph"
             }
         },
-        None => rsx! {
+        GraphSnapshotView::Loading => rsx! {
             p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Loading the latest graph snapshot from Daneel's graph assembly service..." }
         },
+    }
+}
+
+enum GraphSnapshotView {
+    Loading,
+    Empty,
+    Error(String),
+    Ready(AgentGraphSnapshot),
+}
+
+fn graph_snapshot_view(
+    graph_snapshot: Option<&Result<AgentGraphSnapshot, ServerFnError>>,
+) -> GraphSnapshotView {
+    match graph_snapshot {
+        Some(Ok(snapshot)) if snapshot.nodes.is_empty() => GraphSnapshotView::Empty,
+        Some(Ok(snapshot)) => GraphSnapshotView::Ready(snapshot.clone()),
+        Some(Err(error)) => GraphSnapshotView::Error(error.to_string()),
+        None => GraphSnapshotView::Loading,
     }
 }
 
@@ -297,6 +322,35 @@ mod tests {
         dioxus_ssr::render(&dom)
     }
 
+    #[component]
+    fn GraphCardHarness(
+        graph_snapshot: Option<Result<AgentGraphSnapshot, ServerFnError>>,
+    ) -> Element {
+        match graph_snapshot_view(graph_snapshot.as_ref()) {
+            GraphSnapshotView::Ready(snapshot) => rsx! {
+                div {
+                    GraphCanvas { snapshot }
+                }
+            },
+            GraphSnapshotView::Empty => rsx! { div { "Nothing to show yet" } },
+            GraphSnapshotView::Error(error) => {
+                rsx! { div { "Graph snapshot unavailable: {error}" } }
+            }
+            GraphSnapshotView::Loading => {
+                rsx! { div { "Loading the latest graph snapshot from Daneel's graph assembly service..." } }
+            }
+        }
+    }
+
+    fn render_graph_card(
+        graph_snapshot: Option<Result<AgentGraphSnapshot, ServerFnError>>,
+    ) -> String {
+        let mut dom =
+            VirtualDom::new_with_props(GraphCardHarness, GraphCardHarnessProps { graph_snapshot });
+        dom.rebuild_in_place();
+        dioxus_ssr::render(&dom)
+    }
+
     #[test]
     fn summary_values_match_the_snapshot_fixture() {
         let html = render_summary_row(
@@ -348,6 +402,32 @@ mod tests {
         assert!(html.contains(">Degraded<"));
         assert!(html.contains("Gateway degraded"));
         assert!(html.contains("text-amber-300"));
+    }
+
+    #[test]
+    fn malformed_snapshot_does_not_crash_the_page() {
+        let html = render_graph_card(Some(Err(ServerFnError::new("Malformed snapshot payload"))));
+
+        assert!(html.contains("Graph snapshot unavailable"));
+        assert!(html.contains("Malformed snapshot payload"));
+    }
+
+    #[test]
+    fn partial_data_still_renders_available_nodes_and_summaries() {
+        let snapshot = AgentGraphSnapshot {
+            nodes: vec![graph_node("calendar", AgentStatus::Active)],
+            edges: vec![],
+            snapshot_ts: 1,
+        };
+
+        let summary_html = render_summary_row(None, Some(Ok(snapshot.clone())));
+        let graph_html = render_graph_card(Some(Ok(snapshot)));
+
+        assert!(summary_html.contains("data-summary-card=\"Agents\""));
+        assert!(summary_html.contains(">1<"));
+        assert!(summary_html.contains("data-summary-card=\"Connections\""));
+        assert!(summary_html.contains(">0<"));
+        assert!(graph_html.contains("calendar"));
     }
 
     fn graph_node(id: &str, status: AgentStatus) -> AgentNode {
