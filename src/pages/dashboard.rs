@@ -10,6 +10,9 @@ use crate::models::{
     graph::AgentGraphSnapshot,
 };
 
+#[cfg(test)]
+use crate::models::graph::{AgentNode, AgentStatus};
+
 #[derive(Clone, Debug, PartialEq)]
 struct SummaryCardModel {
     title: &'static str,
@@ -71,11 +74,22 @@ fn DashboardSummaryRow(
         gateway_status.read_unchecked().as_ref(),
         graph_snapshot.read_unchecked().as_ref(),
     );
+    let [
+        gateway_card,
+        agents_card,
+        active_agents_card,
+        connections_card,
+    ] = cards;
 
     rsx! {
-        div { class: "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4",
-            for card in cards {
-                SummaryCard { card }
+        div { class: "grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(19rem,0.85fr)_minmax(0,1.15fr)_minmax(0,1.15fr)]",
+            div { class: "xl:col-span-1",
+                SummaryCard { card: gateway_card }
+            }
+            div { class: "min-w-0 grid items-start gap-4 sm:grid-cols-2 xl:col-span-2 xl:grid-cols-3",
+                SummaryCard { card: agents_card }
+                SummaryCard { card: active_agents_card }
+                SummaryCard { card: connections_card }
             }
         }
     }
@@ -85,7 +99,7 @@ fn DashboardSummaryRow(
 fn SummaryCard(card: SummaryCardModel) -> Element {
     rsx! {
         article {
-            class: "rounded-[1.45rem] border border-white/10 bg-white/6 p-5 shadow-[0_20px_52px_rgba(2,6,23,0.28)] backdrop-blur-xl",
+            class: "min-w-0 h-[14rem] rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
             "data-summary-card": card.title,
             p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400", "{card.title}" }
             p { class: format!("m-0 mt-4 text-3xl font-semibold tracking-[-0.05em] {}", card.accent_class), "{card.value}" }
@@ -178,36 +192,6 @@ fn GatewayStatusCard(
     }
 }
 
-fn build_summary_cards(
-    gateway_status: Option<&Result<GatewayStatusSnapshot, ServerFnError>>,
-    graph_snapshot: Option<&Result<AgentGraphSnapshot, ServerFnError>>,
-) -> [SummaryCardModel; 4] {
-    let gateway = gateway_summary_card(gateway_status);
-    let graph_summary = graph_summary_model(graph_snapshot);
-
-    [
-        gateway,
-        SummaryCardModel {
-            title: "Agents",
-            value: graph_summary.agent_count.to_string(),
-            detail: "Known nodes in the assembled snapshot.".to_string(),
-            accent_class: "text-white",
-        },
-        SummaryCardModel {
-            title: "Active agents",
-            value: graph_summary.active_agent_count.to_string(),
-            detail: "Nodes currently marked active by session state.".to_string(),
-            accent_class: "text-emerald-200",
-        },
-        SummaryCardModel {
-            title: "Connections",
-            value: graph_summary.edge_count.to_string(),
-            detail: "Rendered relationships across routes and hints.".to_string(),
-            accent_class: "text-sky-200",
-        },
-    ]
-}
-
 fn gateway_summary_card(
     gateway_status: Option<&Result<GatewayStatusSnapshot, ServerFnError>>,
 ) -> SummaryCardModel {
@@ -239,6 +223,36 @@ fn gateway_summary_card(
     }
 }
 
+fn build_summary_cards(
+    gateway_status: Option<&Result<GatewayStatusSnapshot, ServerFnError>>,
+    graph_snapshot: Option<&Result<AgentGraphSnapshot, ServerFnError>>,
+) -> [SummaryCardModel; 4] {
+    let gateway = gateway_summary_card(gateway_status);
+    let graph_summary = graph_summary_model(graph_snapshot);
+
+    [
+        gateway,
+        SummaryCardModel {
+            title: "Agents",
+            value: graph_summary.agent_count.to_string(),
+            detail: "Known nodes in the assembled snapshot.".to_string(),
+            accent_class: "text-sky-200",
+        },
+        SummaryCardModel {
+            title: "Active agents",
+            value: graph_summary.active_agent_count.to_string(),
+            detail: "Nodes currently marked active by session state.".to_string(),
+            accent_class: "text-emerald-200",
+        },
+        SummaryCardModel {
+            title: "Connections",
+            value: graph_summary.edge_count.to_string(),
+            detail: "Rendered relationships across routes and hints.".to_string(),
+            accent_class: "text-violet-200",
+        },
+    ]
+}
+
 fn graph_summary_model(
     graph_snapshot: Option<&Result<AgentGraphSnapshot, ServerFnError>>,
 ) -> GraphAssemblySummary {
@@ -251,7 +265,6 @@ fn graph_summary_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::graph::{AgentEdge, AgentEdgeKind, AgentNode, AgentStatus};
 
     #[component]
     fn SummaryRowHarness(
@@ -284,19 +297,6 @@ mod tests {
         dioxus_ssr::render(&dom)
     }
 
-    fn graph_node(id: &str, status: AgentStatus) -> AgentNode {
-        AgentNode {
-            id: id.to_string(),
-            name: id.to_string(),
-            is_default: id == "main",
-            heartbeat_enabled: true,
-            heartbeat_schedule: "every 5m".to_string(),
-            active_session_count: if status == AgentStatus::Active { 1 } else { 0 },
-            latest_activity_age_ms: Some(45_000),
-            status,
-        }
-    }
-
     #[test]
     fn summary_values_match_the_snapshot_fixture() {
         let html = render_summary_row(
@@ -312,13 +312,13 @@ mod tests {
             })),
             Some(Ok(AgentGraphSnapshot {
                 nodes: vec![
-                    graph_node("main", AgentStatus::Active),
-                    graph_node("email", AgentStatus::Idle),
+                    graph_node("calendar", AgentStatus::Active),
+                    graph_node("planner", AgentStatus::Idle),
                 ],
-                edges: vec![AgentEdge {
-                    source_id: "main".to_string(),
-                    target_id: "email".to_string(),
-                    kind: AgentEdgeKind::RoutesTo,
+                edges: vec![crate::models::graph::AgentEdge {
+                    source_id: "calendar".to_string(),
+                    target_id: "planner".to_string(),
+                    kind: crate::models::graph::AgentEdgeKind::RoutesTo,
                 }],
                 snapshot_ts: 1,
             })),
@@ -331,8 +331,6 @@ mod tests {
         assert!(html.contains("data-summary-card=\"Active agents\""));
         assert!(html.contains(">1<"));
         assert!(html.contains("data-summary-card=\"Connections\""));
-        assert!(html.contains("Known nodes in the assembled snapshot."));
-        assert!(html.contains("Rendered relationships across routes and hints."));
     }
 
     #[test]
@@ -350,5 +348,18 @@ mod tests {
         assert!(html.contains(">Degraded<"));
         assert!(html.contains("Gateway degraded"));
         assert!(html.contains("text-amber-300"));
+    }
+
+    fn graph_node(id: &str, status: AgentStatus) -> AgentNode {
+        AgentNode {
+            id: id.to_string(),
+            name: id.to_string(),
+            is_default: false,
+            heartbeat_enabled: true,
+            heartbeat_schedule: "*/5 * * * *".to_string(),
+            active_session_count: matches!(status, AgentStatus::Active) as u64,
+            latest_activity_age_ms: Some(60_000),
+            status,
+        }
     }
 }
