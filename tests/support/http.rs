@@ -1,21 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::process::RunningProcess;
-use serde_json::{Value, json};
 use std::{
-    fs,
     io::{Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
-    path::Path,
-    process::{Command, Output, Stdio},
+    net::{SocketAddr, TcpStream},
     thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
 pub const APP_START_TIMEOUT: Duration = Duration::from_secs(180);
 pub const PAGE_TIMEOUT: Duration = Duration::from_secs(75);
 pub const SSE_TIMEOUT: Duration = Duration::from_secs(20);
-pub const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub fn wait_for_http_ready(port: u16, app: &mut RunningProcess) {
     let address = SocketAddr::from(([127, 0, 0, 1], port));
@@ -155,27 +150,6 @@ pub fn read_sse_until(
     );
 }
 
-pub fn ensure_tool(tool: &str) {
-    let output = Command::new("bash")
-        .arg("-lc")
-        .arg(format!("command -v {tool}"))
-        .output()
-        .unwrap_or_else(|error| panic!("Could not check for {tool}: {error}"));
-
-    assert!(
-        output.status.success(),
-        "Required tool `{tool}` was not found on PATH"
-    );
-}
-
-pub fn pick_unused_port() -> u16 {
-    TcpListener::bind(("127.0.0.1", 0))
-        .expect("bind an ephemeral port")
-        .local_addr()
-        .expect("read ephemeral port")
-        .port()
-}
-
 pub fn matches_expectations(response: &str, required: &[&str], forbidden: &[&str]) -> bool {
     required.iter().all(|text| response.contains(text))
         && !forbidden.iter().any(|text| response.contains(text))
@@ -188,51 +162,6 @@ pub fn response_starts_successfully(response: &str) -> bool {
 pub fn with_query_param(url: &str, key: &str, value: &str) -> String {
     let separator = if url.contains('?') { '&' } else { '?' };
     format!("{url}{separator}{key}={value}")
-}
-
-pub fn run_command_success(command: &mut Command, context: &str, timeout: Duration) {
-    let output = run_command_capture(command, context, timeout);
-    if !output.status.success() {
-        panic!(
-            "{context} failed with status {}.\nstdout:\n{}\nstderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr),
-        );
-    }
-}
-
-pub fn run_command_capture(command: &mut Command, context: &str, timeout: Duration) -> Output {
-    let command_line = format!("{command:?}");
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command.spawn().unwrap_or_else(|error| {
-        panic!("{context} failed to start ({command_line}): {error}");
-    });
-    let started = Instant::now();
-
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                return child
-                    .wait_with_output()
-                    .unwrap_or_else(|error| panic!("{context} failed to collect output: {error}"));
-            }
-            Ok(None) if started.elapsed() >= timeout => {
-                let _ = child.kill();
-                let output = child.wait_with_output().unwrap_or_else(|error| {
-                    panic!("{context} timed out and failed to collect output: {error}");
-                });
-                panic!(
-                    "{context} timed out after {}s for {command_line}.\nstdout:\n{}\nstderr:\n{}",
-                    timeout.as_secs(),
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr),
-                );
-            }
-            Ok(None) => thread::sleep(Duration::from_millis(100)),
-            Err(error) => panic!("{context} failed while waiting for {command_line}: {error}"),
-        }
-    }
 }
 
 fn open_request_stream(port: u16, path: &str, accept: &str) -> Result<TcpStream, String> {
@@ -295,32 +224,4 @@ fn read_stream_to_string(stream: &mut TcpStream, port: u16, path: &str) -> Resul
     } else {
         Ok(captured)
     }
-}
-
-pub fn write_session_store(path: &Path, updated_times: &[u64]) -> Result<(), String> {
-    let payload = updated_times
-        .iter()
-        .enumerate()
-        .map(|(index, updated_at)| {
-            (
-                format!("session-{index}"),
-                json!({
-                    "updatedAt": updated_at
-                }),
-            )
-        })
-        .collect::<serde_json::Map<String, Value>>();
-
-    fs::write(
-        path,
-        serde_json::to_vec_pretty(&Value::Object(payload)).unwrap(),
-    )
-    .map_err(|error| format!("Could not write session store {}: {error}", path.display()))
-}
-
-pub fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_millis() as u64
 }

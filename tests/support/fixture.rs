@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use super::util::{now_ms, write_session_store};
+use super::data::{now_ms, write_session_store};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -153,6 +153,21 @@ impl TestFixture {
             gateway_payload: GatewayPayload {
                 state_version: 0,
                 uptime_ms: 0,
+                snapshot_ts: now_ms(),
+                agents: vec![],
+            },
+        })
+    }
+
+    pub(crate) fn empty_graph() -> Result<Self, String> {
+        let tempdir = tempdir().map_err(|error| format!("Could not create tempdir: {error}"))?;
+        let config_path = tempdir.path().join("openclaw.json");
+        Ok(Self {
+            _tempdir: tempdir,
+            config_path,
+            gateway_payload: GatewayPayload {
+                state_version: 7,
+                uptime_ms: 4_200,
                 snapshot_ts: now_ms(),
                 agents: vec![],
             },

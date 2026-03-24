@@ -3,6 +3,7 @@
 use serde_json::Value;
 
 use crate::models::runtime::ActiveSessionRecord;
+use crate::utils::time::ACTIVE_WINDOW_MS;
 
 use super::mapping::{
     map_active_session_record, normalize_active_session_records, normalize_active_sessions,
@@ -61,7 +62,10 @@ fn fallback_recent_active_sessions(
             .unwrap_or_default();
 
         for session in recent_sessions {
-            records.push(map_active_session_record(&session, Some(agent_id))?);
+            let record = map_active_session_record(&session, Some(agent_id))?;
+            if record.age_ms.is_none_or(|age_ms| age_ms < ACTIVE_WINDOW_MS) {
+                records.push(record);
+            }
         }
     }
 

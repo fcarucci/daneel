@@ -668,6 +668,102 @@ async fn list_active_sessions_falls_back_to_agent_recent_entries() {
     assert_eq!(sessions[2].task.as_deref(), Some("check inbox"));
 }
 
+#[tokio::test]
+#[serial]
+async fn list_active_sessions_fallback_filters_out_stale_recent_entries() {
+    let gateway = MockGateway::spawn(gateway_snapshot_payload(
+        json!([
+            {
+                "agentId": "main",
+                "sessions": {
+                    "recent": [
+                        { "key": "agent:main:recent", "age": 120_000 }
+                    ]
+                }
+            },
+            {
+                "agentId": "homelab",
+                "sessions": {
+                    "recent": [
+                        { "key": "agent:homelab:stale", "age": 28_800_000 }
+                    ]
+                }
+            },
+            {
+                "agentId": "coder",
+                "sessions": {
+                    "recent": [
+                        { "key": "agent:coder:recent", "age": 120_000 }
+                    ]
+                }
+            },
+            {
+                "agentId": "email",
+                "sessions": {
+                    "recent": [
+                        { "key": "agent:email:stale", "age": 840_000 }
+                    ]
+                }
+            },
+            {
+                "agentId": "calendar",
+                "sessions": {
+                    "recent": [
+                        { "key": "agent:calendar:recent", "age": 120_000 }
+                    ]
+                }
+            },
+            {
+                "agentId": "locator",
+                "sessions": {
+                    "recent": [
+                        { "key": "agent:locator:stale", "age": 518_400_000 }
+                    ]
+                }
+            },
+            {
+                "agentId": "health-coach",
+                "sessions": {
+                    "recent": [
+                        { "key": "agent:health-coach:recent", "age": 120_000 }
+                    ]
+                }
+            },
+            {
+                "agentId": "planner",
+                "sessions": {
+                    "recent": [
+                        { "key": "agent:planner:stale", "age": 777_600_000 }
+                    ]
+                }
+            }
+        ]),
+        json!([]),
+    ))
+    .expect("spawn mock gateway");
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path =
+        write_openclaw_config(tempdir.path(), gateway.addr.port()).expect("write openclaw config");
+    let _guard = EnvVarGuard::set(
+        "OPENCLAW_CONFIG_PATH",
+        config_path.to_str().expect("config path as utf-8"),
+    );
+
+    let sessions = OpenClawAdapter
+        .list_active_sessions()
+        .await
+        .expect("list fallback sessions through gateway");
+
+    assert_eq!(sessions.len(), 4);
+    assert_eq!(
+        sessions
+            .iter()
+            .map(|session| session.agent_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["calendar", "coder", "health-coach", "main"]
+    );
+}
+
 #[test]
 fn planner_works_with_content_maps_to_collaboration_edges() {
     let tempdir = tempdir().expect("create tempdir");

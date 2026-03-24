@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
+    data::pick_unused_port,
     fixture::TestFixture,
     gateway::MockGateway,
-    process::RunningProcess,
-    util::{
-        pick_unused_port, read_http_until, read_sse_until, wait_for_backend_route_ready,
-        wait_for_http_ready, with_query_param,
+    http::{
+        read_http_until, read_sse_until, wait_for_backend_route_ready, wait_for_http_ready,
+        with_query_param,
     },
+    process::RunningProcess,
 };
 use std::net::SocketAddr;
 
@@ -21,6 +22,13 @@ pub struct BrowserTestApp {
 impl BrowserTestApp {
     pub fn healthy() -> Result<Self, String> {
         let fixture = TestFixture::healthy()?;
+        let gateway = MockGateway::spawn(fixture.gateway_payload.clone())?;
+        fixture.write_openclaw_config(gateway.addr())?;
+        Self::start(fixture, Some(gateway))
+    }
+
+    pub fn empty_graph() -> Result<Self, String> {
+        let fixture = TestFixture::empty_graph()?;
         let gateway = MockGateway::spawn(fixture.gateway_payload.clone())?;
         fixture.write_openclaw_config(gateway.addr())?;
         Self::start(fixture, Some(gateway))
