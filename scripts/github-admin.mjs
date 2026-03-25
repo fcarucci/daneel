@@ -21,6 +21,8 @@ const LABEL_DEFS = {
   testing: { color: "bfd4f2", description: "Testing and verification work" },
   design: { color: "c5def5", description: "Product, UX, or technical design work" },
   blocked: { color: "000000", description: "Blocked by an external dependency or decision" },
+  skipped: { color: "6e7781", description: "Intentionally skipped from the current plan" },
+  "not-to-implement": { color: "8250df", description: "Explicitly decided not to implement" },
   task: { color: "ededed", description: "Tracked implementation task" },
   bug: { color: "d73a4a", description: "Something is not working" },
   enhancement: { color: "a2eeef", description: "New feature or improvement" },
@@ -148,7 +150,7 @@ Commands:
   list-tasks [--limit <n>]
   list-issue-comments --issue <n>
   delete-issue-comment --comment-id <n>
-  update-issue --number <n> [--title <title>] [--body <text>] [--state <open|closed>]
+  update-issue --number <n> [--title <title>] [--body <text>] [--state <open|closed>] [--labels <a,b,c>]
   list-open-prs
   list-prs [--state <open|closed|all>]
   comment-pr --number <n> --body <text>
@@ -1347,9 +1349,15 @@ async function updateIssue(options) {
   if (options.title) patch.title = options.title;
   if (options.body) patch.body = options.body;
   if (options.state) patch.state = options.state;
+  if (options.labels) {
+    patch.labels = String(options.labels)
+      .split(",")
+      .map((label) => label.trim())
+      .filter(Boolean);
+  }
 
   if (Object.keys(patch).length === 0) {
-    throw new Error("update-issue requires at least one of --title, --body, or --state.");
+    throw new Error("update-issue requires at least one of --title, --body, --state, or --labels.");
   }
 
   const issue = await rest("PATCH", `/repos/${owner}/${repo}/issues/${number}`, patch);
