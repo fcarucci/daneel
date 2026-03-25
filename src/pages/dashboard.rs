@@ -4,10 +4,12 @@ use dioxus::prelude::*;
 
 use crate::client::use_app_client;
 use crate::components::graph_canvas::GraphCanvas;
+use crate::components::live_gateway::use_live_gateway;
 use crate::graph_service::{GraphAssemblySummary, summarize_graph_snapshot};
 use crate::models::{
     gateway::{GatewayLevel, GatewayStatusSnapshot},
     graph::AgentGraphSnapshot,
+    live_gateway::OperatorConnectionState,
 };
 
 #[cfg(test)]
@@ -19,11 +21,14 @@ struct SummaryCardModel {
     value: String,
     detail: String,
     accent_class: &'static str,
+    stale: bool,
 }
 
 #[component]
 pub fn Dashboard() -> Element {
     let client = use_app_client();
+    let live_gateway = use_live_gateway();
+    let operator_state = live_gateway.operator_state();
     let gateway_client = client.clone();
     let graph_client = client.clone();
     let gateway_status = use_resource(move || {
@@ -33,6 +38,26 @@ pub fn Dashboard() -> Element {
     let graph_snapshot = use_resource(move || {
         let client = graph_client.clone();
         async move { client.get_agent_graph_snapshot().await }
+    });
+    let mut cached_gateway_status = use_signal(|| None::<GatewayStatusSnapshot>);
+    let mut cached_graph_snapshot = use_signal(|| None::<AgentGraphSnapshot>);
+
+    use_effect({
+        let gateway_status = gateway_status.clone();
+        move || {
+            if let Some(Ok(snapshot)) = gateway_status.read().as_ref() {
+                cached_gateway_status.set(Some(snapshot.clone()));
+            }
+        }
+    });
+
+    use_effect({
+        let graph_snapshot = graph_snapshot.clone();
+        move || {
+            if let Some(Ok(snapshot)) = graph_snapshot.read().as_ref() {
+                cached_graph_snapshot.set(Some(snapshot.clone()));
+            }
+        }
     });
 
     rsx! {
@@ -44,7 +69,13 @@ pub fn Dashboard() -> Element {
                     "This initial shell gives us a typed routing foundation, a shared layout, and room for the first adapter-backed dashboard queries."
                 }
             }
-            DashboardSummaryRow { gateway_status: gateway_status.clone(), graph_snapshot: graph_snapshot.clone() }
+            DashboardSummaryRow {
+                operator_state,
+                gateway_status: gateway_status.clone(),
+                graph_snapshot: graph_snapshot.clone(),
+                cached_gateway_status: cached_gateway_status(),
+                cached_graph_snapshot: cached_graph_snapshot(),
+            }
             div { class: "grid grid-cols-1 gap-4 xl:grid-cols-[minmax(19rem,0.85fr)_minmax(0,1.15fr)_minmax(0,1.15fr)]",
                 div { class: "flex flex-col gap-4 xl:col-span-1",
                     article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
@@ -58,7 +89,11 @@ pub fn Dashboard() -> Element {
                 }
                 article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl xl:col-span-2",
                     h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Agents graph" }
-                    GraphSnapshotCard { graph_snapshot }
+                    GraphSnapshotCard {
+                        operator_state,
+                        graph_snapshot,
+                        cached_graph_snapshot: cached_graph_snapshot(),
+                    }
                 }
             }
         }
@@ -67,12 +102,18 @@ pub fn Dashboard() -> Element {
 
 #[component]
 fn DashboardSummaryRow(
+    operator_state: OperatorConnectionState,
     gateway_status: Resource<Result<GatewayStatusSnapshot, ServerFnError>>,
     graph_snapshot: Resource<Result<AgentGraphSnapshot, ServerFnError>>,
+    cached_gateway_status: Option<GatewayStatusSnapshot>,
+    cached_graph_snapshot: Option<AgentGraphSnapshot>,
 ) -> Element {
     let cards = build_summary_cards(
+        operator_state,
         gateway_status.read_unchecked().as_ref(),
         graph_snapshot.read_unchecked().as_ref(),
+        cached_gateway_status.as_ref(),
+        cached_graph_snapshot.as_ref(),
     );
     let [
         gateway_card,
@@ -101,6 +142,7 @@ fn SummaryCard(card: SummaryCardModel) -> Element {
         article {
             class: "min-w-0 h-[14rem] rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
             "data-summary-card": card.title,
+            "data-summary-stale": if card.stale { "true" } else { "false" },
             p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400", "{card.title}" }
             p { class: format!("m-0 mt-4 text-3xl font-semibold tracking-[-0.05em] {}", card.accent_class), "{card.value}" }
             p { class: "m-0 mt-2 text-sm leading-6 text-slate-300", "{card.detail}" }
@@ -110,29 +152,118 @@ fn SummaryCard(card: SummaryCardModel) -> Element {
 
 #[component]
 fn GraphSnapshotCard(
+    operator_state: OperatorConnectionState,
     graph_snapshot: Resource<Result<AgentGraphSnapshot, ServerFnError>>,
+    cached_graph_snapshot: Option<AgentGraphSnapshot>,
 ) -> Element {
-    match &*graph_snapshot.read_unchecked() {
-        Some(Ok(snapshot)) => rsx! {
-            p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Deterministic first-slice graph layout from the latest assembled gateway snapshot." }
-            div { class: "mt-4",
-                GraphCanvas { snapshot: snapshot.clone() }
+    match graph_snapshot_view(
+        operator_state,
+        graph_snapshot.read_unchecked().as_ref(),
+        cached_graph_snapshot.as_ref(),
+    ) {
+        GraphSnapshotView::Ready { snapshot, stale } => rsx! {
+            div {
+                "data-graph-view": "ready",
+                "data-stale-view": if stale { "true" } else { "false" },
+                p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Deterministic first-slice graph layout from the latest assembled gateway snapshot." }
+                if stale {
+                    p { class: "m-0 mt-2 text-sm leading-6 text-rose-200", "Showing the last known graph snapshot while Daneel reconnects to the backend." }
+                }
+                div { class: "mt-4",
+                    GraphCanvas { snapshot }
+                }
             }
         },
-        Some(Err(error)) => rsx! {
-            p { class: "m-0 mt-3 text-sm leading-6 text-amber-400", "Graph snapshot unavailable: {error}" }
-            button {
-                class: "mt-4 inline-flex items-center rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-medium text-slate-100 transition hover:border-white/20 hover:bg-white/8",
-                onclick: move |_| {
-                    let mut graph_snapshot = graph_snapshot;
-                    graph_snapshot.restart();
-                },
-                "Retry graph"
+        GraphSnapshotView::Empty { stale } => rsx! {
+            div {
+                "data-graph-view": "empty",
+                "data-stale-view": if stale { "true" } else { "false" },
+                class: "mt-3 rounded-[1.3rem] border border-white/10 bg-white/[0.04] px-5 py-5 text-slate-300",
+                p { class: "m-0 text-sm font-medium text-white", "Nothing to show yet" }
+                p { class: "m-0 mt-2 text-sm leading-6 text-slate-300", "The graph snapshot loaded, but there are no assembled nodes yet. Gateway summaries remain available above." }
+                if stale {
+                    p { class: "m-0 mt-2 text-sm leading-6 text-rose-200", "This empty graph is the last known dashboard state while the backend reconnects." }
+                }
             }
         },
-        None => rsx! {
-            p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Loading the latest graph snapshot from Daneel's graph assembly service..." }
+        GraphSnapshotView::Error(error) => rsx! {
+            div {
+                "data-graph-view": "error",
+                "data-stale-view": "false",
+                p { class: "m-0 mt-3 text-sm leading-6 text-amber-400", "Graph snapshot unavailable: {error}" }
+                p { class: "m-0 mt-2 text-sm leading-6 text-slate-300", "The dashboard will keep any available gateway and summary data visible while graph loading recovers." }
+                button {
+                    class: "mt-4 inline-flex items-center rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-medium text-slate-100 transition hover:border-white/20 hover:bg-white/8",
+                    onclick: move |_| {
+                        let mut graph_snapshot = graph_snapshot;
+                        graph_snapshot.restart();
+                    },
+                    "Retry graph"
+                }
+            }
         },
+        GraphSnapshotView::Disconnected => rsx! {
+            div {
+                "data-graph-view": "disconnected",
+                "data-stale-view": "false",
+                class: "mt-3 rounded-[1.3rem] border border-rose-300/20 bg-rose-300/10 px-5 py-5 text-rose-100",
+                p { class: "m-0 text-sm font-medium text-white", "Graph snapshot paused" }
+                p { class: "m-0 mt-2 text-sm leading-6 text-rose-100", "Daneel is retrying the backend connection. The graph will repopulate as soon as the stream recovers." }
+            }
+        },
+        GraphSnapshotView::Loading => rsx! {
+            div {
+                "data-graph-view": "loading",
+                "data-stale-view": "false",
+                p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Loading the latest graph snapshot from Daneel's graph assembly service..." }
+            }
+        },
+    }
+}
+
+enum GraphSnapshotView {
+    Loading,
+    Empty {
+        stale: bool,
+    },
+    Error(String),
+    Disconnected,
+    Ready {
+        snapshot: AgentGraphSnapshot,
+        stale: bool,
+    },
+}
+
+fn graph_snapshot_view(
+    operator_state: OperatorConnectionState,
+    graph_snapshot: Option<&Result<AgentGraphSnapshot, ServerFnError>>,
+    cached_graph_snapshot: Option<&AgentGraphSnapshot>,
+) -> GraphSnapshotView {
+    if operator_state == OperatorConnectionState::Disconnected {
+        if let Some(snapshot) = cached_graph_snapshot {
+            return if snapshot.nodes.is_empty() {
+                GraphSnapshotView::Empty { stale: true }
+            } else {
+                GraphSnapshotView::Ready {
+                    snapshot: snapshot.clone(),
+                    stale: true,
+                }
+            };
+        }
+
+        return GraphSnapshotView::Disconnected;
+    }
+
+    match graph_snapshot {
+        Some(Ok(snapshot)) if snapshot.nodes.is_empty() => {
+            GraphSnapshotView::Empty { stale: false }
+        }
+        Some(Ok(snapshot)) => GraphSnapshotView::Ready {
+            snapshot: snapshot.clone(),
+            stale: false,
+        },
+        Some(Err(error)) => GraphSnapshotView::Error(error.to_string()),
+        None => GraphSnapshotView::Loading,
     }
 }
 
@@ -193,8 +324,40 @@ fn GatewayStatusCard(
 }
 
 fn gateway_summary_card(
+    operator_state: OperatorConnectionState,
     gateway_status: Option<&Result<GatewayStatusSnapshot, ServerFnError>>,
+    cached_gateway_status: Option<&GatewayStatusSnapshot>,
 ) -> SummaryCardModel {
+    if operator_state == OperatorConnectionState::Disconnected {
+        if let Some(snapshot) = cached_gateway_status {
+            return SummaryCardModel {
+                title: "Gateway",
+                value: match snapshot.level {
+                    GatewayLevel::Healthy => "Healthy".to_string(),
+                    GatewayLevel::Degraded => "Degraded".to_string(),
+                },
+                detail: format!(
+                    "Last known gateway status: {} Daneel is retrying the backend connection.",
+                    snapshot.summary
+                ),
+                accent_class: match snapshot.level {
+                    GatewayLevel::Healthy => "text-emerald-200",
+                    GatewayLevel::Degraded => "text-amber-300",
+                },
+                stale: true,
+            };
+        }
+
+        return SummaryCardModel {
+            title: "Gateway",
+            value: "Disconnected".to_string(),
+            detail: "Waiting for the backend connection to recover before loading a fresh gateway snapshot."
+                .to_string(),
+            accent_class: "text-rose-200",
+            stale: false,
+        };
+    }
+
     match gateway_status {
         Some(Ok(snapshot)) => SummaryCardModel {
             title: "Gateway",
@@ -207,28 +370,36 @@ fn gateway_summary_card(
                 GatewayLevel::Healthy => "text-emerald-200",
                 GatewayLevel::Degraded => "text-amber-300",
             },
+            stale: false,
         },
         Some(Err(error)) => SummaryCardModel {
             title: "Gateway",
             value: "Unavailable".to_string(),
             detail: format!("Gateway lookup failed: {error}"),
             accent_class: "text-amber-300",
+            stale: false,
         },
         None => SummaryCardModel {
             title: "Gateway",
             value: "Loading".to_string(),
             detail: "Fetching the latest gateway health snapshot.".to_string(),
             accent_class: "text-slate-200",
+            stale: false,
         },
     }
 }
 
 fn build_summary_cards(
+    operator_state: OperatorConnectionState,
     gateway_status: Option<&Result<GatewayStatusSnapshot, ServerFnError>>,
     graph_snapshot: Option<&Result<AgentGraphSnapshot, ServerFnError>>,
+    cached_gateway_status: Option<&GatewayStatusSnapshot>,
+    cached_graph_snapshot: Option<&AgentGraphSnapshot>,
 ) -> [SummaryCardModel; 4] {
-    let gateway = gateway_summary_card(gateway_status);
-    let graph_summary = graph_summary_model(graph_snapshot);
+    let gateway = gateway_summary_card(operator_state, gateway_status, cached_gateway_status);
+    let graph_summary = graph_summary_model(operator_state, graph_snapshot, cached_graph_snapshot);
+    let graph_stale =
+        operator_state == OperatorConnectionState::Disconnected && cached_graph_snapshot.is_some();
 
     [
         gateway,
@@ -237,25 +408,36 @@ fn build_summary_cards(
             value: graph_summary.agent_count.to_string(),
             detail: "Known nodes in the assembled snapshot.".to_string(),
             accent_class: "text-sky-200",
+            stale: graph_stale,
         },
         SummaryCardModel {
             title: "Active agents",
             value: graph_summary.active_agent_count.to_string(),
             detail: "Nodes currently marked active by session state.".to_string(),
             accent_class: "text-emerald-200",
+            stale: graph_stale,
         },
         SummaryCardModel {
             title: "Connections",
             value: graph_summary.edge_count.to_string(),
             detail: "Rendered relationships across routes and hints.".to_string(),
             accent_class: "text-violet-200",
+            stale: graph_stale,
         },
     ]
 }
 
 fn graph_summary_model(
+    operator_state: OperatorConnectionState,
     graph_snapshot: Option<&Result<AgentGraphSnapshot, ServerFnError>>,
+    cached_graph_snapshot: Option<&AgentGraphSnapshot>,
 ) -> GraphAssemblySummary {
+    if operator_state == OperatorConnectionState::Disconnected {
+        return cached_graph_snapshot
+            .map(summarize_graph_snapshot)
+            .unwrap_or_default();
+    }
+
     match graph_snapshot {
         Some(Ok(snapshot)) => summarize_graph_snapshot(snapshot),
         Some(Err(_)) | None => GraphAssemblySummary::default(),
@@ -268,10 +450,19 @@ mod tests {
 
     #[component]
     fn SummaryRowHarness(
+        operator_state: OperatorConnectionState,
         gateway_status: Option<Result<GatewayStatusSnapshot, ServerFnError>>,
         graph_snapshot: Option<Result<AgentGraphSnapshot, ServerFnError>>,
+        cached_gateway_status: Option<GatewayStatusSnapshot>,
+        cached_graph_snapshot: Option<AgentGraphSnapshot>,
     ) -> Element {
-        let cards = build_summary_cards(gateway_status.as_ref(), graph_snapshot.as_ref());
+        let cards = build_summary_cards(
+            operator_state,
+            gateway_status.as_ref(),
+            graph_snapshot.as_ref(),
+            cached_gateway_status.as_ref(),
+            cached_graph_snapshot.as_ref(),
+        );
 
         rsx! {
             div {
@@ -283,14 +474,86 @@ mod tests {
     }
 
     fn render_summary_row(
+        operator_state: OperatorConnectionState,
         gateway_status: Option<Result<GatewayStatusSnapshot, ServerFnError>>,
         graph_snapshot: Option<Result<AgentGraphSnapshot, ServerFnError>>,
+        cached_gateway_status: Option<GatewayStatusSnapshot>,
+        cached_graph_snapshot: Option<AgentGraphSnapshot>,
     ) -> String {
         let mut dom = VirtualDom::new_with_props(
             SummaryRowHarness,
             SummaryRowHarnessProps {
+                operator_state,
                 gateway_status,
                 graph_snapshot,
+                cached_gateway_status,
+                cached_graph_snapshot,
+            },
+        );
+        dom.rebuild_in_place();
+        dioxus_ssr::render(&dom)
+    }
+
+    #[component]
+    fn GraphCardHarness(
+        operator_state: OperatorConnectionState,
+        graph_snapshot: Option<Result<AgentGraphSnapshot, ServerFnError>>,
+        cached_graph_snapshot: Option<AgentGraphSnapshot>,
+    ) -> Element {
+        match graph_snapshot_view(
+            operator_state,
+            graph_snapshot.as_ref(),
+            cached_graph_snapshot.as_ref(),
+        ) {
+            GraphSnapshotView::Ready { snapshot, stale } => rsx! {
+                div {
+                    "data-stale-view": if stale { "true" } else { "false" },
+                    if stale {
+                        p { "Showing the last known graph snapshot while Daneel reconnects to the backend." }
+                    }
+                    GraphCanvas { snapshot }
+                }
+            },
+            GraphSnapshotView::Empty { stale } => rsx! {
+                div {
+                    "data-stale-view": if stale { "true" } else { "false" },
+                    "Nothing to show yet"
+                }
+            },
+            GraphSnapshotView::Error(error) => {
+                rsx! {
+                    div {
+                        "data-stale-view": "false",
+                        "Graph snapshot unavailable: {error}"
+                        button { "Retry graph" }
+                    }
+                }
+            }
+            GraphSnapshotView::Disconnected => {
+                rsx! { div { "Graph snapshot paused" } }
+            }
+            GraphSnapshotView::Loading => {
+                rsx! {
+                    div {
+                        "data-stale-view": "false",
+                        "Loading the latest graph snapshot from Daneel's graph assembly service..."
+                    }
+                }
+            }
+        }
+    }
+
+    fn render_graph_card(
+        operator_state: OperatorConnectionState,
+        graph_snapshot: Option<Result<AgentGraphSnapshot, ServerFnError>>,
+        cached_graph_snapshot: Option<AgentGraphSnapshot>,
+    ) -> String {
+        let mut dom = VirtualDom::new_with_props(
+            GraphCardHarness,
+            GraphCardHarnessProps {
+                operator_state,
+                graph_snapshot,
+                cached_graph_snapshot,
             },
         );
         dom.rebuild_in_place();
@@ -300,6 +563,7 @@ mod tests {
     #[test]
     fn summary_values_match_the_snapshot_fixture() {
         let html = render_summary_row(
+            OperatorConnectionState::Connected,
             Some(Ok(GatewayStatusSnapshot {
                 connected: true,
                 level: GatewayLevel::Healthy,
@@ -322,6 +586,8 @@ mod tests {
                 }],
                 snapshot_ts: 1,
             })),
+            None,
+            None,
         );
 
         assert!(html.contains("data-summary-card=\"Gateway\""));
@@ -336,11 +602,14 @@ mod tests {
     #[test]
     fn degraded_gateway_state_is_reflected_in_the_status_summary_card() {
         let html = render_summary_row(
+            OperatorConnectionState::Degraded,
             Some(Ok(GatewayStatusSnapshot::degraded(
                 "ws://127.0.0.1:18789/".to_string(),
                 "Gateway degraded",
                 "detail",
             ))),
+            None,
+            None,
             None,
         );
 
@@ -348,6 +617,159 @@ mod tests {
         assert!(html.contains(">Degraded<"));
         assert!(html.contains("Gateway degraded"));
         assert!(html.contains("text-amber-300"));
+    }
+
+    #[test]
+    fn malformed_snapshot_does_not_crash_the_page() {
+        let html = render_graph_card(
+            OperatorConnectionState::Connected,
+            Some(Err(ServerFnError::new("Malformed snapshot payload"))),
+            None,
+        );
+
+        assert!(html.contains("Graph snapshot unavailable"));
+        assert!(html.contains("Malformed snapshot payload"));
+    }
+
+    #[test]
+    fn partial_data_still_renders_available_nodes_and_summaries() {
+        let snapshot = AgentGraphSnapshot {
+            nodes: vec![graph_node("calendar", AgentStatus::Active)],
+            edges: vec![],
+            snapshot_ts: 1,
+        };
+
+        let summary_html = render_summary_row(
+            OperatorConnectionState::Connected,
+            None,
+            Some(Ok(snapshot.clone())),
+            None,
+            None,
+        );
+        let graph_html =
+            render_graph_card(OperatorConnectionState::Connected, Some(Ok(snapshot)), None);
+
+        assert!(summary_html.contains("data-summary-card=\"Agents\""));
+        assert!(summary_html.contains(">1<"));
+        assert!(summary_html.contains("data-summary-card=\"Connections\""));
+        assert!(summary_html.contains(">0<"));
+        assert!(graph_html.contains("calendar"));
+    }
+
+    #[test]
+    fn empty_snapshot_renders_the_dedicated_empty_state() {
+        let html = render_graph_card(
+            OperatorConnectionState::Connected,
+            Some(Ok(AgentGraphSnapshot {
+                nodes: vec![],
+                edges: vec![],
+                snapshot_ts: 1,
+            })),
+            None,
+        );
+
+        assert!(html.contains("Nothing to show yet"));
+        assert!(html.contains("data-stale-view=\"false\""));
+    }
+
+    #[test]
+    fn loading_state_does_not_render_retry_affordance() {
+        let html = render_graph_card(OperatorConnectionState::Connecting, None, None);
+
+        assert!(html.contains("Loading the latest graph snapshot"));
+        assert!(!html.contains("Retry graph"));
+    }
+
+    #[test]
+    fn disconnected_state_uses_cached_graph_snapshot_when_available() {
+        let cached_snapshot = AgentGraphSnapshot {
+            nodes: vec![graph_node("calendar", AgentStatus::Active)],
+            edges: vec![],
+            snapshot_ts: 1,
+        };
+
+        let html = render_graph_card(
+            OperatorConnectionState::Disconnected,
+            Some(Err(ServerFnError::new("backend down"))),
+            Some(cached_snapshot),
+        );
+
+        assert!(html.contains("calendar"));
+        assert!(html.contains("Showing the last known graph snapshot"));
+        assert!(html.contains("data-stale-view=\"true\""));
+    }
+
+    #[test]
+    fn disconnected_without_cached_graph_renders_paused_state() {
+        let html = render_graph_card(
+            OperatorConnectionState::Disconnected,
+            Some(Err(ServerFnError::new("backend down"))),
+            None,
+        );
+
+        assert!(html.contains("Graph snapshot paused"));
+    }
+
+    #[test]
+    fn disconnected_summary_cards_preserve_cached_counts_and_gateway_state() {
+        let cached_gateway = GatewayStatusSnapshot {
+            connected: true,
+            level: GatewayLevel::Healthy,
+            summary: "Gateway connected".to_string(),
+            detail: "healthy detail".to_string(),
+            gateway_url: "ws://127.0.0.1:18789/".to_string(),
+            protocol_version: Some(1),
+            state_version: Some(7),
+            uptime_ms: Some(12_000),
+        };
+        let cached_graph = AgentGraphSnapshot {
+            nodes: vec![
+                graph_node("calendar", AgentStatus::Active),
+                graph_node("planner", AgentStatus::Idle),
+            ],
+            edges: vec![],
+            snapshot_ts: 1,
+        };
+        let html = render_summary_row(
+            OperatorConnectionState::Disconnected,
+            Some(Err(ServerFnError::new("backend down"))),
+            Some(Err(ServerFnError::new("backend down"))),
+            Some(cached_gateway),
+            Some(cached_graph),
+        );
+
+        assert!(html.contains(">Healthy<"));
+        assert!(html.contains("Last known gateway status: Gateway connected"));
+        assert!(html.contains("data-summary-stale=\"true\""));
+        assert!(html.contains("data-summary-card=\"Agents\""));
+        assert!(html.contains(">2<"));
+    }
+
+    #[test]
+    fn degraded_and_disconnected_gateway_copy_stay_distinct() {
+        let degraded_html = render_summary_row(
+            OperatorConnectionState::Degraded,
+            Some(Ok(GatewayStatusSnapshot::degraded(
+                "ws://127.0.0.1:18789/".to_string(),
+                "Gateway degraded",
+                "detail",
+            ))),
+            None,
+            None,
+            None,
+        );
+        let disconnected_html = render_summary_row(
+            OperatorConnectionState::Disconnected,
+            Some(Err(ServerFnError::new("backend down"))),
+            None,
+            None,
+            None,
+        );
+
+        assert!(degraded_html.contains("Gateway degraded"));
+        assert!(!degraded_html.contains("Waiting for the backend connection to recover"));
+        assert!(disconnected_html.contains("Waiting for the backend connection to recover"));
+        assert!(disconnected_html.contains(">Disconnected<"));
     }
 
     fn graph_node(id: &str, status: AgentStatus) -> AgentNode {

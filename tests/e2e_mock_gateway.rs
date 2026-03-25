@@ -4,7 +4,7 @@ mod support;
 
 use serial_test::serial;
 
-use support::{with_degraded_app, with_healthy_app};
+use support::{with_degraded_app, with_empty_graph_app, with_healthy_app};
 
 const PAGE_OK: &str = "HTTP/1.1 200 OK";
 const PAGE_ERROR: &str = "Internal Server Error";
@@ -73,6 +73,19 @@ fn degraded_gateway_event_stream_replays_reconnecting_state() {
 fn degraded_gateway_dashboard_renders_error_state() {
     with_degraded_app(|app| {
         let _ = expect_dashboard_shell(app);
+    });
+}
+
+#[test]
+#[serial]
+fn empty_graph_gateway_dashboard_renders_empty_state_without_errors() {
+    with_empty_graph_app(|app| {
+        let dashboard = expect_dashboard_shell(app);
+
+        assert!(dashboard.contains("Gateway status"));
+        assert!(dashboard.contains("Agents graph"));
+        assert!(dashboard.contains("/assets/main-"));
+        assert!(!dashboard.contains("Internal Server Error"));
     });
 }
 

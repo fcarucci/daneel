@@ -847,12 +847,44 @@ Purpose:
 Output:
 
 - clear loading, empty, degraded, and disconnected states
+- route-level graph and summary views that keep the last known good data visible when live connectivity drops
+- operator-facing recovery copy that distinguishes "still loading", "no graph data yet", "gateway degraded", and "backend disconnected"
+- a visually subdued frozen mode for stale-but-still-useful dashboard content while reconnect is in progress
+
+Required behavior:
+
+- initial page load must show an explicit loading state before the first graph snapshot resolves
+- an empty graph snapshot must render as a truthful empty state rather than an error
+- malformed or partial graph data must not crash the page; available summaries and valid nodes should still render
+- when the backend remains reachable but graph loading fails, the dashboard should show a degraded state with retry affordance while preserving any independently available gateway status data
+- when the live backend connection is disconnected after a successful load, the dashboard should keep the last known good graph and summaries visible in a frozen state instead of clearing the page
+- disconnected and degraded states must use distinct copy and styling so operators can tell whether the problem is backend reachability or gateway/data quality
+
+Visual acceptance:
+
+- loading state reads as intentional and in-progress, not like a blank card or layout failure
+- empty state clearly explains that Daneel is healthy enough to load the dashboard even though no graph nodes are currently available
+- degraded state uses warning styling and explanatory copy without hiding any still-valid gateway or graph data
+- disconnected state keeps the last known graph visible, adds a readable frozen treatment, and surfaces reconnect messaging without overwhelming the rest of the UI
+- top-right connection pill, connection banner, summary cards, and graph panel remain semantically aligned for each state
+- screenshot verification covers loading, empty, degraded, disconnected-frozen, and recovered-connected renders on the dashboard route
 
 Tests:
 
+- unit test: graph snapshot view resolves `Loading`, `Empty`, `Error`, and `Ready` consistently from the resource state
+- unit test: malformed snapshot rows or partial node metadata degrade gracefully without panicking and still render valid summaries
+- unit test: disconnected frozen mode keeps the last known good graph payload instead of downgrading to an empty state
+- unit test: degraded and disconnected copy stay distinct so operator messaging does not regress into a generic error
 - component test: disconnected gateway renders a recovery message
 - component test: malformed snapshot does not crash the page
 - component test: partial data still renders available nodes and summaries
+- component test: empty snapshot renders the dedicated empty-state copy and does not show graph-canvas primitives
+- component test: loading state and retry affordance do not appear at the same time
+- integration test: backend-up but gateway-degraded dashboard keeps summary cards visible while the graph panel enters a degraded state
+- integration test: after one successful load, a mocked backend disconnect preserves the last graph render and applies the frozen layout treatment
+- integration test: reconnect after disconnect returns the pill/banner/dashboard to the normal connected state without a full reload
+- integration test: retrying a failed graph snapshot replaces the degraded panel with the recovered graph once the backend responds successfully
+- visual acceptance test: route verifier captures and saves hydrated DOM plus screenshots for loading, empty, degraded, disconnected-frozen, and recovered dashboard states
 
 ---
 

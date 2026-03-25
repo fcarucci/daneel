@@ -1,20 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod app;
+mod command;
+mod data;
 mod fixture;
 mod gateway;
+mod http;
 mod process;
-mod util;
 
 use std::sync::{Mutex, OnceLock};
 
 pub use app::BrowserTestApp;
+use command::{COMMAND_TIMEOUT, ensure_tool, run_command_success};
 use process::cleanup_stale_dioxus_processes;
-use util::{COMMAND_TIMEOUT, ensure_tool, run_command_success};
 
 static TEST_ENVIRONMENT: OnceLock<()> = OnceLock::new();
 static CLEANUP: OnceLock<()> = OnceLock::new();
 static HEALTHY_APP: OnceLock<Mutex<Option<BrowserTestApp>>> = OnceLock::new();
+static EMPTY_GRAPH_APP: OnceLock<Mutex<Option<BrowserTestApp>>> = OnceLock::new();
 static DEGRADED_APP: OnceLock<Mutex<Option<BrowserTestApp>>> = OnceLock::new();
 
 pub fn with_healthy_app<T>(f: impl FnOnce(&mut BrowserTestApp) -> T) -> T {
@@ -31,6 +34,15 @@ pub fn with_degraded_app<T>(f: impl FnOnce(&mut BrowserTestApp) -> T) -> T {
         &DEGRADED_APP,
         BrowserTestApp::degraded,
         "start degraded browser test app",
+        f,
+    )
+}
+
+pub fn with_empty_graph_app<T>(f: impl FnOnce(&mut BrowserTestApp) -> T) -> T {
+    with_browser_test_app(
+        &EMPTY_GRAPH_APP,
+        BrowserTestApp::empty_graph,
+        "start empty-graph browser test app",
         f,
     )
 }
@@ -86,6 +98,7 @@ fn register_browser_test_cleanup() {
 
 extern "C" fn cleanup_browser_test_apps() {
     cleanup_browser_test_slot(&HEALTHY_APP);
+    cleanup_browser_test_slot(&EMPTY_GRAPH_APP);
     cleanup_browser_test_slot(&DEGRADED_APP);
 }
 
