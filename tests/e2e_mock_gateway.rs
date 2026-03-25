@@ -173,7 +173,7 @@ fn healthy_gateway_polished_routes_pass_browser_capture_verification() {
 
 #[test]
 #[serial]
-fn degraded_gateway_polished_dashboard_keeps_state_banner_and_shell() {
+fn degraded_gateway_polished_dashboard_keeps_shell_and_graph_markers() {
     with_degraded_app(|app| {
         let screenshot = temp_artifact_path("dashboard-degraded-polish", "png");
         let dom = temp_artifact_path("dashboard-degraded-polish", "html");
@@ -187,7 +187,7 @@ fn degraded_gateway_polished_dashboard_keeps_state_banner_and_shell() {
         );
 
         let dashboard_html = fs::read_to_string(&dom).expect("read degraded dashboard DOM");
-        assert!(dashboard_html.contains("data-state-banner="));
+        assert!(dashboard_html.contains("data-visual-shell=\"mission-control\""));
         assert!(dashboard_html.contains("data-dashboard-panel=\"gateway\""));
         assert!(dashboard_html.contains("data-graph-polish=\"enhanced\""));
 
