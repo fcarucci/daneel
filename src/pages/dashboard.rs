@@ -62,8 +62,8 @@ pub fn Dashboard() -> Element {
 
     rsx! {
         section { class: "flex flex-col gap-5",
-            div { class: "rounded-[2rem] border border-white/10 bg-[var(--panel-bg)] px-6 py-7 shadow-[0_30px_80px_rgba(2,6,23,0.45)] backdrop-blur-2xl sm:px-8",
-                p { class: "m-0 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-[var(--signal)]", "POC V1" }
+            div { class: "polish-hero rounded-[2rem] border border-white/10 bg-[var(--panel-bg)] px-6 py-7 shadow-[0_30px_80px_rgba(2,6,23,0.45)] backdrop-blur-2xl sm:px-8", "data-polish-hero": "dashboard",
+                p { class: "page-kicker m-0 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-[var(--signal)]", "POC V1" }
                 h2 { class: "m-0 mt-3 max-w-3xl text-3xl font-semibold tracking-[-0.05em] text-white sm:text-4xl", "Gateway overview and graph surfaces start here." }
                 p { class: "m-0 mt-3 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base",
                     "This initial shell gives us a typed routing foundation, a shared layout, and room for the first adapter-backed dashboard queries."
@@ -78,16 +78,16 @@ pub fn Dashboard() -> Element {
             }
             div { class: "grid grid-cols-1 gap-4 xl:grid-cols-[minmax(19rem,0.85fr)_minmax(0,1.15fr)_minmax(0,1.15fr)]",
                 div { class: "flex flex-col gap-4 xl:col-span-1",
-                    article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+                    article { class: "polish-panel polish-panel--interactive rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl", "data-polish-tone": "gateway", "data-dashboard-panel": "gateway",
                         h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Gateway status" }
                         GatewayStatusCard { gateway_status }
                     }
-                    article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+                    article { class: "polish-panel polish-panel--interactive rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl", "data-polish-tone": "activity", "data-dashboard-panel": "activity",
                         h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Activity feed" }
                         p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Live event transport is intentionally deferred until after the first request-response slice." }
                     }
                 }
-                article { class: "rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl xl:col-span-2",
+                article { class: "polish-panel polish-panel--interactive rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl xl:col-span-2", "data-polish-tone": "graph", "data-dashboard-panel": "graph",
                     h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Agents graph" }
                     GraphSnapshotCard {
                         operator_state,
@@ -140,9 +140,10 @@ fn DashboardSummaryRow(
 fn SummaryCard(card: SummaryCardModel) -> Element {
     rsx! {
         article {
-            class: "min-w-0 h-[14rem] rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+            class: "polish-card polish-card--interactive min-w-0 h-[14rem] rounded-[1.6rem] border border-white/10 bg-white/6 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
             "data-summary-card": card.title,
             "data-summary-stale": if card.stale { "true" } else { "false" },
+            "data-summary-polish": "enhanced",
             p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-400", "{card.title}" }
             p { class: format!("m-0 mt-4 text-3xl font-semibold tracking-[-0.05em] {}", card.accent_class), "{card.value}" }
             p { class: "m-0 mt-2 text-sm leading-6 text-slate-300", "{card.detail}" }
@@ -165,6 +166,7 @@ fn GraphSnapshotCard(
             div {
                 "data-graph-view": "ready",
                 "data-stale-view": if stale { "true" } else { "false" },
+                "data-graph-polish": "enhanced",
                 p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Deterministic first-slice graph layout from the latest assembled gateway snapshot." }
                 if stale {
                     p { class: "m-0 mt-2 text-sm leading-6 text-rose-200", "Showing the last known graph snapshot while Daneel reconnects to the backend." }
@@ -178,6 +180,7 @@ fn GraphSnapshotCard(
             div {
                 "data-graph-view": "empty",
                 "data-stale-view": if stale { "true" } else { "false" },
+                "data-graph-polish": "enhanced",
                 class: "mt-3 rounded-[1.3rem] border border-white/10 bg-white/[0.04] px-5 py-5 text-slate-300",
                 p { class: "m-0 text-sm font-medium text-white", "Nothing to show yet" }
                 p { class: "m-0 mt-2 text-sm leading-6 text-slate-300", "The graph snapshot loaded, but there are no assembled nodes yet. Gateway summaries remain available above." }
@@ -190,6 +193,7 @@ fn GraphSnapshotCard(
             div {
                 "data-graph-view": "error",
                 "data-stale-view": "false",
+                "data-graph-polish": "enhanced",
                 p { class: "m-0 mt-3 text-sm leading-6 text-amber-400", "Graph snapshot unavailable: {error}" }
                 p { class: "m-0 mt-2 text-sm leading-6 text-slate-300", "The dashboard will keep any available gateway and summary data visible while graph loading recovers." }
                 button {
@@ -206,6 +210,7 @@ fn GraphSnapshotCard(
             div {
                 "data-graph-view": "disconnected",
                 "data-stale-view": "false",
+                "data-graph-polish": "enhanced",
                 class: "mt-3 rounded-[1.3rem] border border-rose-300/20 bg-rose-300/10 px-5 py-5 text-rose-100",
                 p { class: "m-0 text-sm font-medium text-white", "Graph snapshot paused" }
                 p { class: "m-0 mt-2 text-sm leading-6 text-rose-100", "Daneel is retrying the backend connection. The graph will repopulate as soon as the stream recovers." }
@@ -215,6 +220,7 @@ fn GraphSnapshotCard(
             div {
                 "data-graph-view": "loading",
                 "data-stale-view": "false",
+                "data-graph-polish": "enhanced",
                 p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Loading the latest graph snapshot from Daneel's graph assembly service..." }
             }
         },
@@ -508,6 +514,7 @@ mod tests {
             GraphSnapshotView::Ready { snapshot, stale } => rsx! {
                 div {
                     "data-stale-view": if stale { "true" } else { "false" },
+                    "data-graph-polish": "enhanced",
                     if stale {
                         p { "Showing the last known graph snapshot while Daneel reconnects to the backend." }
                     }
@@ -517,6 +524,7 @@ mod tests {
             GraphSnapshotView::Empty { stale } => rsx! {
                 div {
                     "data-stale-view": if stale { "true" } else { "false" },
+                    "data-graph-polish": "enhanced",
                     "Nothing to show yet"
                 }
             },
@@ -524,18 +532,20 @@ mod tests {
                 rsx! {
                     div {
                         "data-stale-view": "false",
+                        "data-graph-polish": "enhanced",
                         "Graph snapshot unavailable: {error}"
                         button { "Retry graph" }
                     }
                 }
             }
             GraphSnapshotView::Disconnected => {
-                rsx! { div { "Graph snapshot paused" } }
+                rsx! { div { "data-graph-polish": "enhanced", "Graph snapshot paused" } }
             }
             GraphSnapshotView::Loading => {
                 rsx! {
                     div {
                         "data-stale-view": "false",
+                        "data-graph-polish": "enhanced",
                         "Loading the latest graph snapshot from Daneel's graph assembly service..."
                     }
                 }
@@ -591,6 +601,7 @@ mod tests {
         );
 
         assert!(html.contains("data-summary-card=\"Gateway\""));
+        assert!(html.contains("data-summary-polish=\"enhanced\""));
         assert!(html.contains(">Healthy<"));
         assert!(html.contains("data-summary-card=\"Agents\""));
         assert!(html.contains(">2<"));
@@ -670,6 +681,7 @@ mod tests {
 
         assert!(html.contains("Nothing to show yet"));
         assert!(html.contains("data-stale-view=\"false\""));
+        assert!(html.contains("data-graph-polish=\"enhanced\""));
     }
 
     #[test]
@@ -770,6 +782,31 @@ mod tests {
         assert!(!degraded_html.contains("Waiting for the backend connection to recover"));
         assert!(disconnected_html.contains("Waiting for the backend connection to recover"));
         assert!(disconnected_html.contains(">Disconnected<"));
+    }
+
+    #[test]
+    fn polished_graph_state_markers_remain_distinct() {
+        let loading_html = render_graph_card(OperatorConnectionState::Connecting, None, None);
+        let empty_html = render_graph_card(
+            OperatorConnectionState::Connected,
+            Some(Ok(AgentGraphSnapshot {
+                nodes: vec![],
+                edges: vec![],
+                snapshot_ts: 1,
+            })),
+            None,
+        );
+        let error_html = render_graph_card(
+            OperatorConnectionState::Connected,
+            Some(Err(ServerFnError::new("malformed"))),
+            None,
+        );
+
+        assert!(loading_html.contains("Loading the latest graph snapshot"));
+        assert!(empty_html.contains("Nothing to show yet"));
+        assert!(error_html.contains("Graph snapshot unavailable"));
+        assert!(error_html.contains("malformed"));
+        assert!(empty_html.contains("data-graph-polish=\"enhanced\""));
     }
 
     fn graph_node(id: &str, status: AgentStatus) -> AgentNode {

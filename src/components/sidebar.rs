@@ -11,9 +11,9 @@ pub fn Sidebar() -> Element {
     let route: Route = use_route();
 
     rsx! {
-        aside { class: "border-b border-white/10 bg-[var(--rail-bg)]/88 px-4 py-6 backdrop-blur-2xl lg:border-b-0 lg:border-r lg:px-5",
+        aside { class: "border-b border-white/10 bg-[var(--rail-bg)]/88 px-4 py-6 backdrop-blur-2xl lg:border-b-0 lg:border-r lg:px-5", "data-sidebar-polish": "enhanced",
             div { class: "mb-7 flex flex-col gap-2",
-                p { class: "m-0 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-[var(--signal)]", "OpenClaw" }
+                p { class: "page-kicker m-0 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-[var(--signal)]", "OpenClaw" }
                 h1 { class: "m-0 text-[1.95rem] font-semibold tracking-[-0.05em] text-white", "Daneel" }
                 p { class: "m-0 max-w-[13rem] text-sm leading-6 text-slate-300", "A focused mission control surface for operators." }
             }
@@ -22,9 +22,9 @@ pub fn Sidebar() -> Element {
                     {
                         let is_active = nav_route == route;
                         let class_name = if is_active {
-                            "flex items-center gap-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-[1.05rem] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:translate-x-0.5 hover:border-emerald-200/30 hover:bg-emerald-300/12"
+                            "polish-card polish-card--interactive flex items-center gap-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-[1.05rem] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:translate-x-0.5 hover:border-emerald-200/30 hover:bg-emerald-300/12"
                         } else {
-                            "flex items-center gap-3 rounded-2xl border border-transparent px-4 py-3 text-[1.05rem] font-medium text-slate-300 transition hover:translate-x-0.5 hover:border-white/10 hover:bg-white/5 hover:text-white"
+                            "polish-card polish-card--interactive flex items-center gap-3 rounded-2xl border border-transparent px-4 py-3 text-[1.05rem] font-medium text-slate-300 transition hover:translate-x-0.5 hover:border-white/10 hover:bg-white/5 hover:text-white"
                         };
                         let icon_class = if is_active {
                             "h-[0.95rem] w-[0.95rem] shrink-0 text-emerald-200"
@@ -35,6 +35,7 @@ pub fn Sidebar() -> Element {
                         rsx! {
                             Link {
                                 class: class_name,
+                                "data-nav-polish": if is_active { "active" } else { "idle" },
                                 to: nav_route.clone(),
                                 NavIcon { route: nav_route.clone(), class: icon_class }
                                 span { "{nav_route.label()}" }

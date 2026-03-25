@@ -31,6 +31,18 @@ High-level goals:
 - polished operator-focused UX
 - expanding server-backed data loading and live operational views
 
+## Mandatory Workflow
+
+For any implementation task in this repo, the detailed execution workflow in
+`docs/agent-workflows/DANEEL_WORKFLOW.md` is mandatory and must be followed to the letter.
+
+`AGENTS.md` is the repo orientation and policy guide.
+`docs/agent-workflows/DANEEL_WORKFLOW.md` is the mandatory task-execution workflow.
+
+If there is any conflict or overlap about task execution order, verification order,
+refactoring, review gates, or push/commit readiness, follow
+`docs/agent-workflows/DANEEL_WORKFLOW.md`.
+
 ## Current Tech Stack
 
 - Rust edition `2024`
@@ -622,3 +634,7 @@ Expectations before commit:
 - the mock-gateway integration test passes
 - the app is verified to start successfully with `dx serve --web --fullstack`
 - UI changes get a manual screenshot-based visual check against the live app before commit
+
+For the required end-of-task execution order, including the mandatory refactoring pass and
+the requirement to run visual acceptance verification last, follow
+`docs/agent-workflows/DANEEL_WORKFLOW.md`.

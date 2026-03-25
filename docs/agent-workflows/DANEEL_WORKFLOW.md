@@ -69,7 +69,14 @@ When Francesco asks to complete a task in Daneel, ALWAYS follow this exact proce
    - For **boundary/architectural tasks**: require at least one *failing compile test* that proves the boundary exists — a test module that tries to import transport-specific or OpenClaw-specific types from UI-facing code must fail to compile, confirming the boundary is enforced, not just claimed.
    - **Refactoring pass:** run the `refactoring` skill on the modified files (see `skills/refactoring/` in repo)
    - Remove dead/debug/redundant code
-   - Full verify: fmt + unit + integration + visual
+   - **Mandatory final sequence (in this exact order):**
+     1. reach a first green implementation run
+     2. run the refactoring pass
+     3. rerun fmt + unit + integration after the refactor
+     4. run visual acceptance verification last
+     5. only then commit or push
+   - Opportunistic cleanup during implementation does **not** count as the refactoring pass
+   - Visual acceptance verification must happen after the post-refactor automated re-check, not before
 5. **Rebase onto main before pushing:**
    - `git fetch origin && git rebase origin/main`
    - Resolve all conflicts
@@ -137,6 +144,8 @@ Expected output:
 ---
 
 ## ⚠️ Pre-Push Gate (MANDATORY — all five must pass before `git push`)
+
+Before entering the pre-push gate, the implementation workflow must already have completed the dedicated refactoring pass and the post-refactor automated re-verification. Do not use the checks below as a substitute for that step.
 
 Before pushing, run each check, pipe to file, grep the result, and confirm the required string is present:
 

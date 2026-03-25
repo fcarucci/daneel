@@ -3,11 +3,10 @@
 use dioxus::prelude::*;
 
 use crate::client::use_app_client;
-use crate::components::live_gateway::use_live_gateway;
-use crate::models::gateway::GatewayLevel;
-use crate::models::live_gateway::{
-    LiveGatewayLevel, OperatorConnectionState, resolve_operator_connection_state,
+use crate::components::live_gateway::{
+    gateway_snapshot_level, resolve_operator_state_with_gateway_snapshot, use_live_gateway,
 };
+use crate::models::live_gateway::OperatorConnectionState;
 
 #[component]
 pub fn TopBar() -> Element {
@@ -17,10 +16,11 @@ pub fn TopBar() -> Element {
         async move { client.get_gateway_status().await }
     });
     let live_gateway = use_live_gateway();
+    let operator_state = resolved_live_level(&gateway_status, &live_gateway);
 
-    let pill = status_pill(resolved_live_level(&gateway_status, &live_gateway));
+    let pill = status_pill(operator_state);
 
-    let live_attr = if live_gateway.operator_state() == OperatorConnectionState::Connected {
+    let live_attr = if operator_state == OperatorConnectionState::Connected {
         "true"
     } else {
         "false"
@@ -29,10 +29,10 @@ pub fn TopBar() -> Element {
     rsx! {
         header { class: "flex flex-col gap-5 px-5 pt-6 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10",
             div {
-                p { class: "m-0 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-[var(--signal)]", "Mission Control" }
+                p { class: "page-kicker m-0 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-[var(--signal)]", "Mission Control" }
             }
             div { class: "flex items-center gap-3",
-                div { class: pill.class, "data-live": live_attr,
+                div { class: format!("state-chip {}", pill.class), "data-live": live_attr, "data-topbar-polish": "enhanced",
                     svg {
                         class: pill.dot_class,
                         view_box: "0 0 16 16",
@@ -51,35 +51,11 @@ fn resolved_live_level(
     gateway_status: &Resource<Result<crate::models::gateway::GatewayStatusSnapshot, ServerFnError>>,
     live_gateway: &crate::components::live_gateway::LiveGatewayState,
 ) -> OperatorConnectionState {
-    let gateway_level = gateway_level_from_status(gateway_status);
-    let live_level = (live_gateway.live_status)().map(|event| event.level);
-    let preferred_level = preferred_gateway_level(live_level, gateway_level);
-
-    resolve_operator_connection_state((live_gateway.backend_state)(), preferred_level)
-}
-
-fn gateway_level_from_status(
-    gateway_status: &Resource<Result<crate::models::gateway::GatewayStatusSnapshot, ServerFnError>>,
-) -> Option<LiveGatewayLevel> {
-    gateway_status
-        .read_unchecked()
-        .as_ref()
-        .and_then(|value| value.as_ref().ok())
-        .map(|snapshot| match snapshot.level {
-            GatewayLevel::Healthy => LiveGatewayLevel::Healthy,
-            GatewayLevel::Degraded => LiveGatewayLevel::Degraded,
-        })
-}
-
-fn preferred_gateway_level(
-    live_level: Option<LiveGatewayLevel>,
-    gateway_level: Option<LiveGatewayLevel>,
-) -> Option<LiveGatewayLevel> {
-    match live_level {
-        Some(LiveGatewayLevel::Connecting) => gateway_level.or(Some(LiveGatewayLevel::Connecting)),
-        Some(level) => Some(level),
-        None => gateway_level,
-    }
+    resolve_operator_state_with_gateway_snapshot(
+        (live_gateway.backend_state)(),
+        (live_gateway.live_status)().map(|event| event.level),
+        gateway_snapshot_level(gateway_status),
+    )
 }
 
 struct StatusPill {
@@ -115,7 +91,7 @@ fn status_pill(level: OperatorConnectionState) -> StatusPill {
 
 #[cfg(test)]
 mod tests {
-    use super::{LiveGatewayLevel, OperatorConnectionState, preferred_gateway_level, status_pill};
+    use super::{OperatorConnectionState, status_pill};
 
     #[test]
     fn disconnected_pill_uses_disconnected_label() {
@@ -139,22 +115,10 @@ mod tests {
     }
 
     #[test]
-    fn connecting_live_level_yields_to_healthy_gateway_snapshot() {
-        let level = preferred_gateway_level(
-            Some(LiveGatewayLevel::Connecting),
-            Some(LiveGatewayLevel::Healthy),
-        );
+    fn connected_pill_keeps_surface_chip_spacing() {
+        let pill = status_pill(OperatorConnectionState::Connected);
 
-        assert!(matches!(level, Some(LiveGatewayLevel::Healthy)));
-    }
-
-    #[test]
-    fn disconnected_live_level_overrides_healthy_gateway_snapshot() {
-        let level = preferred_gateway_level(
-            Some(LiveGatewayLevel::Disconnected),
-            Some(LiveGatewayLevel::Healthy),
-        );
-
-        assert!(matches!(level, Some(LiveGatewayLevel::Disconnected)));
+        assert!(pill.class.contains("rounded-full"));
+        assert!(pill.class.contains("gap-3"));
     }
 }

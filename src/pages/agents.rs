@@ -6,8 +6,8 @@ use crate::client::use_app_client;
 use crate::models::agents::{AgentOverviewItem, AgentOverviewSnapshot};
 use crate::utils::time::{ACTIVE_WINDOW_MS, format_age_badge, heartbeat_is_active};
 
-const AGENT_TILE_ACTIVE_CLASS: &str = "group relative overflow-hidden rounded-[1.9rem] border border-emerald-300/35 bg-[linear-gradient(180deg,rgba(14,28,32,0.96),rgba(5,12,24,0.98))] px-5 py-5 shadow-[0_0_0_1px_rgba(110,231,183,0.14),0_0_42px_rgba(16,185,129,0.28),0_0_90px_rgba(16,185,129,0.08),0_24px_64px_rgba(2,6,23,0.42)] backdrop-blur-xl";
-const AGENT_TILE_IDLE_CLASS: &str = "group relative overflow-hidden rounded-[1.9rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(6,11,25,0.98))] px-5 py-5 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl";
+const AGENT_TILE_ACTIVE_CLASS: &str = "agent-tile agent-tile--active group relative overflow-hidden rounded-[1.9rem] border border-emerald-300/35 bg-[linear-gradient(180deg,rgba(14,28,32,0.96),rgba(5,12,24,0.98))] px-5 py-5 shadow-[0_0_0_1px_rgba(110,231,183,0.14),0_0_42px_rgba(16,185,129,0.28),0_0_90px_rgba(16,185,129,0.08),0_24px_64px_rgba(2,6,23,0.42)] backdrop-blur-xl";
+const AGENT_TILE_IDLE_CLASS: &str = "agent-tile group relative overflow-hidden rounded-[1.9rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(6,11,25,0.98))] px-5 py-5 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl";
 const STATUS_DOT_ACTIVE_CLASS: &str =
     "h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.95)]";
 const STATUS_DOT_IDLE_CLASS: &str = "h-2.5 w-2.5 rounded-full bg-slate-500";
@@ -26,9 +26,9 @@ pub fn Agents() -> Element {
     });
 
     rsx! {
-        section { class: "flex flex-col gap-5",
+        section { class: "flex flex-col gap-5", "data-agents-route": "enhanced",
             div { class: "flex flex-col gap-2",
-                p { class: "m-0 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-[var(--signal)]", "Graph View" }
+                p { class: "page-kicker m-0 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-[var(--signal)]", "Graph View" }
                 p { class: "m-0 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base", "Inspect configured agents, heartbeat posture, and recent runtime activity from the live gateway snapshot." }
             }
             AgentOverviewSection { agent_overview }
@@ -46,14 +46,14 @@ fn AgentOverviewSection(
                 p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-slate-400", "Agent tiles" }
                 p { class: "m-0 text-sm text-slate-400", "{snapshot.active_recent_agents}/{snapshot.total_agents} active in the last 10 minutes" }
             }
-            div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4",
+            div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4", "data-agents-polish": "enhanced",
                 for agent in snapshot.agents.iter() {
                     AgentCard { agent: agent.clone() }
                 }
             }
         },
         Some(Err(error)) => rsx! {
-            article { class: "rounded-[1.6rem] border border-amber-400/20 bg-amber-400/10 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+            article { class: "polish-panel rounded-[1.6rem] border border-amber-400/20 bg-amber-400/10 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl", "data-agents-state": "error",
                 h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-amber-100", "Gateway lookup failed" }
                 p { class: "m-0 mt-3 text-sm leading-6 text-amber-100/90", "{error}" }
                 button {
@@ -67,7 +67,7 @@ fn AgentOverviewSection(
             }
         },
         None => rsx! {
-            article { class: "rounded-[1.6rem] border border-white/10 bg-[var(--panel-bg)] p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl",
+            article { class: "polish-panel rounded-[1.6rem] border border-white/10 bg-[var(--panel-bg)] p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl", "data-agents-state": "loading",
                 h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Loading agents" }
                 p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Requesting the current agent inventory from the OpenClaw gateway snapshot..." }
             }
@@ -113,7 +113,7 @@ fn AgentCard(agent: AgentOverviewItem) -> Element {
         RECENT_BADGE_IDLE_CLASS
     };
     rsx! {
-        article { class: tile_class,
+        article { class: tile_class, "data-agent-tile": if is_active_now { "active" } else { "idle" }, "data-agent-polish": "enhanced",
             div { class: "pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" }
             if is_active_now {
                 div { class: "pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-emerald-300/14 blur-3xl" }
@@ -259,8 +259,9 @@ mod tests {
 
     #[test]
     fn styling_class_selection() {
-        assert_eq!(AGENT_TILE_ACTIVE_CLASS, AGENT_TILE_ACTIVE_CLASS);
-        assert_eq!(AGENT_TILE_IDLE_CLASS, AGENT_TILE_IDLE_CLASS);
+        assert!(AGENT_TILE_ACTIVE_CLASS.contains("agent-tile"));
+        assert!(AGENT_TILE_ACTIVE_CLASS.contains("agent-tile--active"));
+        assert!(AGENT_TILE_IDLE_CLASS.contains("agent-tile"));
         assert_eq!(STATUS_DOT_ACTIVE_CLASS, STATUS_DOT_ACTIVE_CLASS);
         assert_eq!(STATUS_DOT_IDLE_CLASS, STATUS_DOT_IDLE_CLASS);
         assert_eq!(HEART_ENABLED_CLASS, HEART_ENABLED_CLASS);

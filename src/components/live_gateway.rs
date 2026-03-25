@@ -2,7 +2,8 @@
 
 use dioxus::prelude::*;
 
-#[cfg(target_arch = "wasm32")]
+use crate::models::gateway::GatewayLevel;
+use crate::models::gateway::GatewayStatusSnapshot;
 use crate::models::live_gateway::LiveGatewayLevel;
 use crate::models::live_gateway::{
     BackendConnectionState, LiveGatewayEvent, OperatorConnectionState,
@@ -38,6 +39,34 @@ pub fn LiveGatewayProvider(children: Element) -> Element {
 
 pub(crate) fn use_live_gateway() -> LiveGatewayState {
     use_context::<LiveGatewayState>()
+}
+
+pub(crate) fn gateway_snapshot_level(
+    gateway_status: &Resource<Result<GatewayStatusSnapshot, ServerFnError>>,
+) -> Option<GatewayLevel> {
+    gateway_status
+        .read_unchecked()
+        .as_ref()
+        .and_then(|value| value.as_ref().ok())
+        .map(|snapshot| snapshot.level.clone())
+}
+
+pub(crate) fn resolve_operator_state_with_gateway_snapshot(
+    backend_state: BackendConnectionState,
+    live_level: Option<LiveGatewayLevel>,
+    gateway_level: Option<GatewayLevel>,
+) -> OperatorConnectionState {
+    let snapshot_level = gateway_level.map(|level| match level {
+        GatewayLevel::Healthy => LiveGatewayLevel::Healthy,
+        GatewayLevel::Degraded => LiveGatewayLevel::Degraded,
+    });
+    let preferred_level = match live_level {
+        Some(LiveGatewayLevel::Connecting) => snapshot_level.or(Some(LiveGatewayLevel::Connecting)),
+        Some(level) => Some(level),
+        None => snapshot_level,
+    };
+
+    resolve_operator_connection_state(backend_state, preferred_level)
 }
 
 fn use_live_gateway_state() -> LiveGatewayState {
@@ -168,5 +197,36 @@ fn disconnected_event() -> LiveGatewayEvent {
         summary: "Backend event stream disconnected.".to_string(),
         detail: "The browser is keeping the current view frozen while it retries the backend."
             .to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_operator_state_with_gateway_snapshot;
+    use crate::models::{
+        gateway::GatewayLevel,
+        live_gateway::{BackendConnectionState, LiveGatewayLevel, OperatorConnectionState},
+    };
+
+    #[test]
+    fn healthy_gateway_snapshot_overrides_connecting_live_state() {
+        let state = resolve_operator_state_with_gateway_snapshot(
+            BackendConnectionState::Connected,
+            Some(LiveGatewayLevel::Connecting),
+            Some(GatewayLevel::Healthy),
+        );
+
+        assert_eq!(state, OperatorConnectionState::Connected);
+    }
+
+    #[test]
+    fn degraded_gateway_snapshot_overrides_connecting_live_state() {
+        let state = resolve_operator_state_with_gateway_snapshot(
+            BackendConnectionState::Connected,
+            Some(LiveGatewayLevel::Connecting),
+            Some(GatewayLevel::Degraded),
+        );
+
+        assert_eq!(state, OperatorConnectionState::Degraded);
     }
 }

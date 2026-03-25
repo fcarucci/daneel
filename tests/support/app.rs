@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
+    command::{COMMAND_TIMEOUT, run_command_success},
     data::pick_unused_port,
     fixture::TestFixture,
     gateway::MockGateway,
@@ -10,7 +11,7 @@ use super::{
     },
     process::RunningProcess,
 };
-use std::net::SocketAddr;
+use std::{net::SocketAddr, process::Command};
 
 pub struct BrowserTestApp {
     _fixture: TestFixture,
@@ -85,5 +86,44 @@ impl BrowserTestApp {
     #[allow(dead_code)]
     pub fn logs(&self) -> String {
         self.process.log_output()
+    }
+
+    pub fn verify_route_capture(
+        &mut self,
+        route: &str,
+        screenshot: &str,
+        dom: &str,
+        wait_texts: &[&str],
+        forbid_texts: &[&str],
+    ) {
+        self.process.assert_still_running();
+        let mut command = Command::new("node");
+        command
+            .arg("scripts/verify-route.mjs")
+            .arg("--url")
+            .arg(format!(
+                "http://127.0.0.1:{}{}",
+                self.port,
+                with_query_param(route, "e2e-disable-live", "1")
+            ))
+            .arg("--screenshot")
+            .arg(screenshot)
+            .arg("--dom")
+            .arg(dom)
+            .arg("--full-page");
+
+        for text in wait_texts {
+            command.arg("--wait-text").arg(text);
+        }
+
+        for text in forbid_texts {
+            command.arg("--forbid-text").arg(text);
+        }
+
+        run_command_success(
+            &mut command,
+            &format!("verify live route {route} against the mock gateway"),
+            COMMAND_TIMEOUT,
+        );
     }
 }
