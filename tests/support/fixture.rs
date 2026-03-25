@@ -17,6 +17,7 @@ pub(crate) struct GatewayPayload {
     pub(crate) uptime_ms: u64,
     pub(crate) snapshot_ts: u64,
     pub(crate) agents: Vec<MockAgent>,
+    pub(crate) bindings: Vec<Value>,
 }
 
 #[derive(Clone)]
@@ -140,6 +141,83 @@ impl TestFixture {
                         8_400_000,
                     ),
                 ],
+                bindings: vec![],
+            },
+        })
+    }
+
+    pub(crate) fn smoke() -> Result<Self, String> {
+        let tempdir = tempdir().map_err(|error| format!("Could not create tempdir: {error}"))?;
+        let config_path = tempdir.path().join("openclaw.json");
+        let session_root = tempdir.path().join("sessions");
+        fs::create_dir_all(&session_root)
+            .map_err(|error| format!("Could not create session root: {error}"))?;
+
+        let now_ms = now_ms();
+        let main_path = session_root.join("main.json");
+        let calendar_path = session_root.join("calendar.json");
+        let planner_path = session_root.join("planner.json");
+
+        write_session_store(
+            &main_path,
+            &[now_ms - 120_000, now_ms - 240_000, now_ms - 7_200_000],
+        )?;
+        write_session_store(&calendar_path, &[now_ms - 300_000, now_ms - 8_400_000])?;
+        write_session_store(&planner_path, &[now_ms - 8_400_000])?;
+
+        let agents_root = tempdir.path().join("agents");
+        let planner_agent_dir = agents_root.join("planner").join("agent");
+        fs::create_dir_all(&planner_agent_dir)
+            .map_err(|error| format!("Could not create planner agent dir: {error}"))?;
+        fs::write(
+            planner_agent_dir.join("AGENTS.md"),
+            r#"
+### Works With
+- **Main Agent**: For orchestration
+"#,
+        )
+        .map_err(|error| format!("Could not write planner AGENTS.md: {error}"))?;
+
+        Ok(Self {
+            _tempdir: tempdir,
+            config_path,
+            gateway_payload: GatewayPayload {
+                state_version: 64,
+                uptime_ms: 654_321,
+                snapshot_ts: now_ms,
+                agents: vec![
+                    MockAgent::new(
+                        "main",
+                        true,
+                        true,
+                        "120m",
+                        &main_path,
+                        "agent:main:cron:alpha",
+                        120_000,
+                    ),
+                    MockAgent::new(
+                        "calendar",
+                        false,
+                        true,
+                        "120m",
+                        &calendar_path,
+                        "agent:calendar:cron:beta",
+                        300_000,
+                    ),
+                    MockAgent::new(
+                        "planner",
+                        false,
+                        true,
+                        "0m",
+                        &planner_path,
+                        "agent:planner:cron:gamma",
+                        8_400_000,
+                    ),
+                ],
+                bindings: vec![
+                    json!({ "sourceAgentId": "main", "targetAgentId": "calendar" }),
+                    json!({ "sourceAgentId": "calendar", "targetAgentId": "planner" }),
+                ],
             },
         })
     }
@@ -155,6 +233,7 @@ impl TestFixture {
                 uptime_ms: 0,
                 snapshot_ts: now_ms(),
                 agents: vec![],
+                bindings: vec![],
             },
         })
     }
@@ -170,6 +249,7 @@ impl TestFixture {
                 uptime_ms: 4_200,
                 snapshot_ts: now_ms(),
                 agents: vec![],
+                bindings: vec![],
             },
         })
     }
@@ -181,6 +261,14 @@ impl TestFixture {
                 "auth": {
                     "token": AUTH_TOKEN
                 }
+            },
+            "agents": {
+                "list": self.gateway_payload.agents.iter().map(|agent| {
+                    json!({
+                        "id": agent.id,
+                        "name": agent.id,
+                    })
+                }).collect::<Vec<_>>()
             }
         });
         fs::write(
