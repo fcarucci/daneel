@@ -2,8 +2,12 @@
 
 use dioxus::prelude::*;
 
+use crate::client::use_app_client;
 use crate::components::{
-    live_gateway::{LiveGatewayProvider, use_live_gateway},
+    live_gateway::{
+        LiveGatewayProvider, gateway_snapshot_level, resolve_operator_state_with_gateway_snapshot,
+        use_live_gateway,
+    },
     navbar::TopBar,
     sidebar::Sidebar,
 };
@@ -13,7 +17,9 @@ use crate::router::Route;
 pub fn AppLayout() -> Element {
     rsx! {
         LiveGatewayProvider {
-            div { class: "min-h-screen bg-[var(--app-bg)] text-[var(--ink-0)]",
+            div {
+                class: "mission-shell min-h-screen bg-[var(--app-bg)] text-[var(--ink-0)]",
+                "data-visual-shell": "mission-control",
                 div { class: "grid min-h-screen grid-cols-1 lg:grid-cols-[15.5rem_minmax(0,1fr)]",
                     Sidebar {}
                     LayoutContent {}
@@ -25,15 +31,24 @@ pub fn AppLayout() -> Element {
 
 #[component]
 fn LayoutContent() -> Element {
+    let client = use_app_client();
     let live_gateway = use_live_gateway();
-    let operator_state = live_gateway.operator_state();
+    let gateway_status = use_resource(move || {
+        let client = client.clone();
+        async move { client.get_gateway_status().await }
+    });
+    let operator_state = resolve_operator_state_with_gateway_snapshot(
+        (live_gateway.backend_state)(),
+        (live_gateway.live_status)().map(|event| event.level),
+        gateway_snapshot_level(&gateway_status),
+    );
     let main_class = main_content_class(live_gateway.is_frozen());
 
     rsx! {
         div { class: "min-w-0",
             TopBar {}
             ConnectionStateBanner { state: operator_state }
-            main { class: main_class,
+            main { class: format!("{main_class} route-stage"), "data-route-stage": "true",
                 Outlet::<Route> {}
             }
         }
@@ -48,7 +63,7 @@ fn ConnectionStateBanner(state: crate::models::live_gateway::OperatorConnectionS
 
     rsx! {
         div { class: "px-5 pt-2 sm:px-8 lg:px-10",
-            article { class: banner.class,
+            article { class: format!("polish-banner {}", banner.class), "data-state-banner": banner.title,
                 p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-inherit/80", "{banner.title}" }
                 p { class: "m-0 mt-2 text-sm leading-6 text-inherit", "{banner.detail}" }
             }
@@ -127,5 +142,14 @@ mod tests {
 
         assert_eq!(banner.title, "Live updates paused");
         assert!(banner.detail.contains("retrying the backend connection"));
+    }
+
+    #[test]
+    fn connecting_banner_uses_polish_friendly_surface_class() {
+        let banner = connection_banner(OperatorConnectionState::Connecting)
+            .expect("connecting state should render a banner");
+
+        assert!(banner.class.contains("rounded-[1.3rem]"));
+        assert!(banner.class.contains("backdrop-blur-xl"));
     }
 }

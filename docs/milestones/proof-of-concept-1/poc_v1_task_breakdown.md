@@ -915,12 +915,27 @@ Purpose:
 Output:
 
 - motion tuning, hover states, empty-state art direction, polished gradients and shadows
+- coherent motion and polish across the dashboard and agents routes without weakening the operator-state semantics added in `T6.1`
+- visual treatments that still read clearly during loading, empty, degraded, disconnected, and recovered states
+
+Visual acceptance:
+
+- dashboard entrance, summary cards, graph panel, and agents tiles feel intentional rather than static or boilerplate
+- hover, focus, and active states are polished on both desktop and mobile without making the UI feel noisy
+- loading, empty, degraded, disconnected, and recovered states preserve clear readability after the motion pass
+- motion remains subtle enough that status changes still read as operational state, not decorative animation
+- screenshot and video verification cover the primary dashboard route plus the agents route after the polish pass
+- visual verification captures at least one healthy state and one degraded or empty state after hydration
 
 Tests:
 
 - manual QA checklist: desktop and mobile both feel polished
+- component test: polished dashboard state markers still distinguish loading, empty, degraded, disconnected, and ready renders
+- integration test: mock-gateway healthy dashboard and agents routes render the polished shell without regressing required hydrated text
+- integration test: mock-gateway degraded or empty route still renders the polished state treatment without collapsing into an error page
 - visual regression snapshots for the main dashboard state
-- visual regression snapshots for loading, empty, degraded, and success states
+- visual regression snapshots for loading, empty, degraded, disconnected, and success states
+- visual acceptance test: hydrated screenshot capture for the polished dashboard and agents routes plus uploaded verification media
 
 ---
 

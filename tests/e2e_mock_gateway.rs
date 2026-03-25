@@ -3,6 +3,10 @@
 mod support;
 
 use serial_test::serial;
+use std::{
+    fs,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use support::{with_degraded_app, with_empty_graph_app, with_healthy_app};
 
@@ -21,6 +25,17 @@ fn expect_agents_shell(app: &mut support::BrowserTestApp) -> String {
     let response = app.wait_for_page_response("/agents", AGENTS_REQUIRED, &[PAGE_ERROR]);
     assert!(response.contains("/assets/main-"));
     response
+}
+
+fn temp_artifact_path(name: &str, extension: &str) -> String {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    std::env::temp_dir()
+        .join(format!("daneel-{name}-{stamp}.{extension}"))
+        .display()
+        .to_string()
 }
 
 #[test]
@@ -112,5 +127,71 @@ fn agents_route_remains_available_across_repeated_requests() {
     with_healthy_app(|app| {
         let _ = expect_agents_shell(app);
         let _ = expect_agents_shell(app);
+    });
+}
+
+#[test]
+#[serial]
+fn healthy_gateway_polished_routes_pass_browser_capture_verification() {
+    with_healthy_app(|app| {
+        let dashboard_png = temp_artifact_path("dashboard-polish", "png");
+        let dashboard_dom = temp_artifact_path("dashboard-polish", "html");
+        let agents_png = temp_artifact_path("agents-polish", "png");
+        let agents_dom = temp_artifact_path("agents-polish", "html");
+
+        app.verify_route_capture(
+            "/",
+            &dashboard_png,
+            &dashboard_dom,
+            &["Mission Control", "Gateway status", "Agents graph"],
+            &[PAGE_ERROR],
+        );
+        app.verify_route_capture(
+            "/agents",
+            &agents_png,
+            &agents_dom,
+            &["Graph View"],
+            &["Gateway lookup failed"],
+        );
+
+        let dashboard_html = fs::read_to_string(&dashboard_dom).expect("read dashboard DOM");
+        let agents_html = fs::read_to_string(&agents_dom).expect("read agents DOM");
+
+        assert!(dashboard_html.contains("data-visual-shell=\"mission-control\""));
+        assert!(dashboard_html.contains("data-polish-hero=\"dashboard\""));
+        assert!(dashboard_html.contains("data-dashboard-panel=\"graph\""));
+        assert!(dashboard_html.contains("data-summary-polish=\"enhanced\""));
+        assert!(agents_html.contains("data-sidebar-polish=\"enhanced\""));
+        assert!(agents_html.contains("data-agents-route=\"enhanced\""));
+
+        let _ = fs::remove_file(&dashboard_png);
+        let _ = fs::remove_file(&dashboard_dom);
+        let _ = fs::remove_file(&agents_png);
+        let _ = fs::remove_file(&agents_dom);
+    });
+}
+
+#[test]
+#[serial]
+fn degraded_gateway_polished_dashboard_keeps_state_banner_and_shell() {
+    with_degraded_app(|app| {
+        let screenshot = temp_artifact_path("dashboard-degraded-polish", "png");
+        let dom = temp_artifact_path("dashboard-degraded-polish", "html");
+
+        app.verify_route_capture(
+            "/",
+            &screenshot,
+            &dom,
+            &["Mission Control", "Gateway status"],
+            &[PAGE_ERROR],
+        );
+
+        let dashboard_html = fs::read_to_string(&dom).expect("read degraded dashboard DOM");
+        assert!(dashboard_html.contains("data-state-banner="));
+        assert!(dashboard_html.contains("data-dashboard-panel=\"gateway\""));
+        assert!(dashboard_html.contains("data-graph-polish=\"enhanced\""));
+
+        let _ = fs::remove_file(&screenshot);
+        let _ = fs::remove_file(&dom);
     });
 }
