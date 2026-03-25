@@ -8,7 +8,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use support::{with_degraded_app, with_empty_graph_app, with_healthy_app};
+use support::{with_degraded_app, with_empty_graph_app, with_healthy_app, with_smoke_app};
 
 const PAGE_OK: &str = "HTTP/1.1 200 OK";
 const PAGE_ERROR: &str = "Internal Server Error";
@@ -146,12 +146,18 @@ fn healthy_gateway_polished_routes_pass_browser_capture_verification() {
             &["Mission Control", "Gateway status", "Agents graph"],
             &[PAGE_ERROR],
         );
-        app.verify_route_capture(
+        app.verify_route_capture_with_expectations(
             "/agents",
             &agents_png,
             &agents_dom,
             &["Graph View"],
             &["Gateway lookup failed"],
+            &[
+                "[data-sidebar-polish=\"enhanced\"]",
+                "[data-agents-route=\"enhanced\"]",
+            ],
+            &[],
+            std::time::Duration::from_secs(60),
         );
 
         let dashboard_html = fs::read_to_string(&dashboard_dom).expect("read dashboard DOM");
@@ -189,6 +195,52 @@ fn degraded_gateway_polished_dashboard_keeps_shell_and_graph_markers() {
         let dashboard_html = fs::read_to_string(&dom).expect("read degraded dashboard DOM");
         assert!(dashboard_html.contains("data-visual-shell=\"mission-control\""));
         assert!(dashboard_html.contains("data-dashboard-panel=\"gateway\""));
+        assert!(dashboard_html.contains("data-graph-polish=\"enhanced\""));
+
+        let _ = fs::remove_file(&screenshot);
+        let _ = fs::remove_file(&dom);
+    });
+}
+
+#[test]
+#[serial]
+fn poc_smoke_dashboard_shell_and_graph_snapshot_cover_full_vertical_slice() {
+    with_smoke_app(|app| {
+        let event_stream = app.wait_for_gateway_event(
+            &[
+                PAGE_OK,
+                "content-type: text/event-stream",
+                "\"level\":\"healthy\"",
+                "\"summary\":\"Gateway health update: healthy.\"",
+            ],
+            &[],
+        );
+        assert!(event_stream.contains("\"detail\":\"Live gateway event received.\""));
+
+        let screenshot = temp_artifact_path("dashboard-smoke", "png");
+        let dom = temp_artifact_path("dashboard-smoke", "html");
+
+        app.verify_route_capture_with_expectations(
+            "/",
+            &screenshot,
+            &dom,
+            &["Mission Control", "Gateway status", "Agents graph"],
+            &[PAGE_ERROR],
+            &[
+                "[data-visual-shell=\"mission-control\"]",
+                "[data-polish-hero=\"dashboard\"]",
+                "[data-dashboard-panel=\"graph\"]",
+                "[data-graph-polish=\"enhanced\"]",
+            ],
+            &[],
+            std::time::Duration::from_secs(60),
+        );
+
+        let dashboard_html = fs::read_to_string(&dom).expect("read smoke dashboard DOM");
+
+        assert!(dashboard_html.contains("data-visual-shell=\"mission-control\""));
+        assert!(dashboard_html.contains("data-polish-hero=\"dashboard\""));
+        assert!(dashboard_html.contains("data-dashboard-panel=\"graph\""));
         assert!(dashboard_html.contains("data-graph-polish=\"enhanced\""));
 
         let _ = fs::remove_file(&screenshot);

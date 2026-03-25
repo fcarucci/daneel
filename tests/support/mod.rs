@@ -19,6 +19,7 @@ static CLEANUP: OnceLock<()> = OnceLock::new();
 static HEALTHY_APP: OnceLock<Mutex<Option<BrowserTestApp>>> = OnceLock::new();
 static EMPTY_GRAPH_APP: OnceLock<Mutex<Option<BrowserTestApp>>> = OnceLock::new();
 static DEGRADED_APP: OnceLock<Mutex<Option<BrowserTestApp>>> = OnceLock::new();
+static SMOKE_APP: OnceLock<Mutex<Option<BrowserTestApp>>> = OnceLock::new();
 
 pub fn with_healthy_app<T>(f: impl FnOnce(&mut BrowserTestApp) -> T) -> T {
     with_browser_test_app(
@@ -43,6 +44,15 @@ pub fn with_empty_graph_app<T>(f: impl FnOnce(&mut BrowserTestApp) -> T) -> T {
         &EMPTY_GRAPH_APP,
         BrowserTestApp::empty_graph,
         "start empty-graph browser test app",
+        f,
+    )
+}
+
+pub fn with_smoke_app<T>(f: impl FnOnce(&mut BrowserTestApp) -> T) -> T {
+    with_browser_test_app(
+        &SMOKE_APP,
+        BrowserTestApp::smoke,
+        "start smoke browser test app",
         f,
     )
 }
@@ -100,6 +110,7 @@ extern "C" fn cleanup_browser_test_apps() {
     cleanup_browser_test_slot(&HEALTHY_APP);
     cleanup_browser_test_slot(&EMPTY_GRAPH_APP);
     cleanup_browser_test_slot(&DEGRADED_APP);
+    cleanup_browser_test_slot(&SMOKE_APP);
 }
 
 fn cleanup_browser_test_slot(slot: &'static OnceLock<Mutex<Option<BrowserTestApp>>>) {

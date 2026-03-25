@@ -35,6 +35,13 @@ impl BrowserTestApp {
         Self::start(fixture, Some(gateway))
     }
 
+    pub fn smoke() -> Result<Self, String> {
+        let fixture = TestFixture::smoke()?;
+        let gateway = MockGateway::spawn(fixture.gateway_payload.clone())?;
+        fixture.write_openclaw_config(gateway.addr())?;
+        Self::start(fixture, Some(gateway))
+    }
+
     pub fn degraded() -> Result<Self, String> {
         let fixture = TestFixture::degraded()?;
         fixture.write_openclaw_config(SocketAddr::from(([127, 0, 0, 1], pick_unused_port())))?;
@@ -96,6 +103,29 @@ impl BrowserTestApp {
         wait_texts: &[&str],
         forbid_texts: &[&str],
     ) {
+        self.verify_route_capture_with_expectations(
+            route,
+            screenshot,
+            dom,
+            wait_texts,
+            forbid_texts,
+            &[],
+            &[],
+            COMMAND_TIMEOUT,
+        );
+    }
+
+    pub fn verify_route_capture_with_expectations(
+        &mut self,
+        route: &str,
+        screenshot: &str,
+        dom: &str,
+        wait_texts: &[&str],
+        forbid_texts: &[&str],
+        wait_selectors: &[&str],
+        forbid_selectors: &[&str],
+        timeout: std::time::Duration,
+    ) {
         self.process.assert_still_running();
         let mut command = Command::new("node");
         command
@@ -110,20 +140,30 @@ impl BrowserTestApp {
             .arg(screenshot)
             .arg("--dom")
             .arg(dom)
+            .arg("--timeout-ms")
+            .arg(timeout.as_millis().to_string())
             .arg("--full-page");
 
         for text in wait_texts {
             command.arg("--wait-text").arg(text);
         }
 
+        for selector in wait_selectors {
+            command.arg("--wait-selector").arg(selector);
+        }
+
         for text in forbid_texts {
             command.arg("--forbid-text").arg(text);
+        }
+
+        for selector in forbid_selectors {
+            command.arg("--forbid-selector").arg(selector);
         }
 
         run_command_success(
             &mut command,
             &format!("verify live route {route} against the mock gateway"),
-            COMMAND_TIMEOUT,
+            timeout,
         );
     }
 }

@@ -139,7 +139,8 @@ fn connect_response(request: &Value, payload: &GatewayPayload) -> Value {
                 "health": {
                     "ts": payload.snapshot_ts,
                     "defaultAgentId": "main",
-                    "agents": payload.agents.iter().map(MockAgent::to_value).collect::<Vec<_>>()
+                    "agents": payload.agents.iter().map(MockAgent::to_value).collect::<Vec<_>>(),
+                    "bindings": payload.bindings,
                 }
             }
         }
