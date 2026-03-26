@@ -52,6 +52,7 @@ digraph process {
         "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" [shape=box];
         "Spec reviewer subagent confirms code matches spec?" [shape=diamond];
         "Implementer subagent fixes spec gaps" [shape=box];
+        "Run explicit refactoring pass" [shape=box];
         "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [shape=box];
         "Code quality reviewer subagent approves?" [shape=diamond];
         "Implementer subagent fixes quality issues" [shape=box];
@@ -72,10 +73,11 @@ digraph process {
     "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" -> "Spec reviewer subagent confirms code matches spec?";
     "Spec reviewer subagent confirms code matches spec?" -> "Implementer subagent fixes spec gaps" [label="no"];
     "Implementer subagent fixes spec gaps" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" [label="re-review"];
-    "Spec reviewer subagent confirms code matches spec?" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="yes"];
+    "Spec reviewer subagent confirms code matches spec?" -> "Run explicit refactoring pass" [label="yes"];
+    "Run explicit refactoring pass" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)";
     "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" -> "Code quality reviewer subagent approves?";
     "Code quality reviewer subagent approves?" -> "Implementer subagent fixes quality issues" [label="no"];
-    "Implementer subagent fixes quality issues" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="re-review"];
+    "Implementer subagent fixes quality issues" -> "Run explicit refactoring pass" [label="re-review"];
     "Code quality reviewer subagent approves?" -> "Mark task complete in task tracker" [label="yes"];
     "Mark task complete in task tracker" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
@@ -116,6 +118,16 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 4. If the plan itself is wrong, escalate to the human
 
 **Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
+
+## Refactoring Step
+
+After spec compliance passes for a task, run an explicit refactoring pass before code-quality review.
+
+- Use the `refactoring` skill on the files changed by that task.
+- Keep the refactor behavior-preserving and scoped to the task that just passed spec review.
+- Re-run the fastest relevant verification after the refactor before moving to code-quality review.
+- If the code-quality reviewer requests additional structural cleanup, apply the fixes, then run the explicit refactoring pass again before re-review.
+- Do not ask the user for permission to run this refactoring pass. It is part of the required workflow once spec review passes.
 
 ## Prompt Templates
 
@@ -220,6 +232,7 @@ Done!
 
 **Quality gates:**
 - Self-review catches issues before handoff
+- Explicit refactoring pass happens after spec compliance and before code-quality review
 - Two-stage review: spec compliance, then code quality
 - Review loops ensure fixes actually work
 - Spec compliance prevents over/under-building
@@ -236,12 +249,14 @@ Done!
 **Never:**
 - Start implementation on main/master branch without explicit user consent
 - Skip reviews (spec compliance OR code quality)
+- Skip the refactoring pass after spec review
 - Proceed with unfixed issues
 - Dispatch multiple implementation subagents in parallel (conflicts)
 - Make subagent read plan file (provide full text instead)
 - Skip scene-setting context (subagent needs to understand where task fits)
 - Ignore subagent questions (answer before letting them proceed)
 - Accept "close enough" on spec compliance (spec reviewer found issues = not done)
+- Start code quality review before the refactoring pass is complete
 - Skip review loops (reviewer found issues = implementer fixes = review again)
 - Let implementer self-review replace actual review (both are needed)
 - **Start code quality review before spec compliance is ✅** (wrong order)
