@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::client::use_app_client;
+use crate::components::dashboard_data::use_dashboard_data;
 use crate::components::graph_canvas::GraphCanvas;
 use crate::components::live_gateway::use_live_gateway;
 use crate::graph_service::{GraphAssemblySummary, summarize_graph_snapshot};
@@ -26,39 +26,13 @@ struct SummaryCardModel {
 
 #[component]
 pub fn Dashboard() -> Element {
-    let client = use_app_client();
+    let dash = use_dashboard_data();
     let live_gateway = use_live_gateway();
     let operator_state = live_gateway.operator_state();
-    let gateway_client = client.clone();
-    let graph_client = client.clone();
-    let gateway_status = use_resource(move || {
-        let client = gateway_client.clone();
-        async move { client.get_gateway_status().await }
-    });
-    let graph_snapshot = use_resource(move || {
-        let client = graph_client.clone();
-        async move { client.get_agent_graph_snapshot().await }
-    });
-    let mut cached_gateway_status = use_signal(|| None::<GatewayStatusSnapshot>);
-    let mut cached_graph_snapshot = use_signal(|| None::<AgentGraphSnapshot>);
-
-    use_effect({
-        let gateway_status = gateway_status.clone();
-        move || {
-            if let Some(Ok(snapshot)) = gateway_status.read().as_ref() {
-                cached_gateway_status.set(Some(snapshot.clone()));
-            }
-        }
-    });
-
-    use_effect({
-        let graph_snapshot = graph_snapshot.clone();
-        move || {
-            if let Some(Ok(snapshot)) = graph_snapshot.read().as_ref() {
-                cached_graph_snapshot.set(Some(snapshot.clone()));
-            }
-        }
-    });
+    let gateway_status = dash.gateway_status.clone();
+    let graph_snapshot = dash.graph_snapshot.clone();
+    let cached_gateway_status = dash.cached_gateway_status;
+    let cached_graph_snapshot = dash.cached_graph_snapshot;
 
     rsx! {
         section { class: "flex flex-col gap-5",
