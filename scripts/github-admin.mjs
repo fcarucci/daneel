@@ -808,9 +808,7 @@ function pullUrl(pullNumber) {
 
 function buildPullRequestBody(options, issue) {
   const sections = [];
-  const taskTag = options.issue
-    ? `Task: #${issue.number} ${issue.title}`
-    : null;
+  const taskTag = options.issue ? `Task: #${issue.number}` : null;
   if (taskTag) {
     sections.push(taskTag);
   }
