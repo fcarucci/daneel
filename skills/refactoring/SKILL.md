@@ -1,13 +1,13 @@
 ---
 name: refactoring
-description: Use when a user asks to refactor, simplify, clean up, or restructure code while preserving behavior; also use when project or team workflow requires a dedicated refactoring pass at the end of each implementation slice (features and bug fixes). Applies Martin Fowler style refactoring discipline and points to one reference file per refactoring from the official catalog.
+description: Use proactively at the end of each implementation slice when project workflow requires it, or when a user asks to refactor, simplify, clean up, or restructure code while preserving behavior. Do not wait for an explicit user request if the workflow already mandates a post-implementation pass (features and bug fixes). Applies Martin Fowler style refactoring discipline and points to one reference file per refactoring from the official catalog.
 ---
 
 # Refactoring Fowler
 
 Use this skill when the goal is to improve code structure without changing observable behavior.
 
-When your **repository agent guide or team workflow** mandates it, run this skill as a **required** pass after each implementation slice finishes green—feature or bug fix—before calling that slice complete or moving to the next review gate. In-loop tidy-ups while coding are not a substitute.
+When your **repository agent guide or team workflow** mandates it, run this skill as a **required** pass after each implementation slice finishes green—feature or bug fix—before calling that slice complete or moving to the next review gate. **Start that pass on your own initiative**; do not wait for the user to say “refactor” or ask for cleanup. In-loop tidy-ups while coding are not a substitute.
 
 The official source is Martin Fowler's *Refactoring* and the online catalog:
 

@@ -129,7 +129,7 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 2. **After spec compliance passes:** go straight to **code-quality** review (no extra refactor gate unless implementation changed again).
 3. **After the implementer fixes code-quality issues:** run the `refactoring` skill on the changed files again, re-verify, then dispatch **code-quality** re-review.
 4. If the code-quality reviewer asks for structural follow-up, apply it, then run the explicit refactoring pass again before the next re-review.
-5. Do not ask the user for permission; this is part of the required workflow for **any** implementation work, not only large features.
+5. Do not ask the user for permission, and **do not wait** for them to request refactoring—execute the pass **proactively** as soon as the slice is green. This is part of the required workflow for **any** implementation work, not only large features.
 
 ## Prompt Templates
 

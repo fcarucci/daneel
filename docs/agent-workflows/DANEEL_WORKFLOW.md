@@ -67,7 +67,7 @@ When Francesco asks to complete a task in Daneel, ALWAYS follow this exact proce
      6. For boundary tasks: the boundary is enforced by the type system, not just by convention
      The implementor must fix every FAIL, push the fix to the branch, and request re-review. **Push to origin is blocked until DeepSeek explicitly outputs "ALL CHECKS PASS".**
    - For **boundary/architectural tasks**: require at least one *failing compile test* that proves the boundary exists — a test module that tries to import transport-specific or OpenClaw-specific types from UI-facing code must fail to compile, confirming the boundary is enforced, not just claimed.
-   - **Refactoring pass (mandatory for every implementation):** applies to **new features, bug fixes, and any follow-up code change** before you treat the slice as done. Run the `refactoring` skill on all files touched in that slice (see `skills/refactoring/` in repo). There is **no** exception for “small” or “just a bugfix” work.
+   - **Refactoring pass (mandatory for every implementation):** applies to **new features, bug fixes, and any follow-up code change** before you treat the slice as done. Run the `refactoring` skill on all files touched in that slice (see `skills/refactoring/` in repo). There is **no** exception for “small” or “just a bugfix” work. **Run it proactively** as soon as the slice is green—do **not** wait for the user to type “refactor” or approve a cleanup step; it is automatic workflow, not an on-demand request.
    - Remove dead/debug/redundant code
    - **Mandatory final sequence (in this exact order):**
      1. reach a first green implementation run (tests / behavior prove the fix or feature)

@@ -45,6 +45,8 @@ refactoring, review gates, or push/commit readiness, follow
 
 **Refactoring (non-negotiable):** At the end of **every** implementation slice—**features and bug fixes** alike—run a dedicated **`refactoring` skill** pass on the touched files (see `skills/refactoring/`), re-run the relevant verification, then proceed to the next gate or commit. Ad-hoc cleanup while coding does not replace this pass. Full ordering and gates are in `docs/agent-workflows/DANEEL_WORKFLOW.md`.
 
+**Proactive:** Do this **without waiting** for the user to say “refactor,” ask for cleanup, or confirm. It is part of the standard completion sequence, not a separate optional step you offer or postpone.
+
 ## Current Tech Stack
 
 - Rust edition `2024`
