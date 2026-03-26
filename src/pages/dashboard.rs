@@ -253,18 +253,13 @@ fn GatewayStatusCard(
 ) -> Element {
     match &*gateway_status.read_unchecked() {
         Some(Ok(snapshot)) => {
-            let badge_class = match snapshot.level {
-                GatewayLevel::Healthy => {
-                    "mt-3 inline-flex rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200"
-                }
-                GatewayLevel::Degraded => {
-                    "mt-3 inline-flex rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-amber-400"
-                }
-            };
+            const DEGRADED_BADGE: &str = "mt-3 inline-flex rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-amber-400";
 
             rsx! {
-                p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "{snapshot.summary}" }
-                span { class: badge_class, "{snapshot.level:?}" }
+                if snapshot.level == GatewayLevel::Degraded {
+                    p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "{snapshot.summary}" }
+                    span { class: DEGRADED_BADGE, "{snapshot.level:?}" }
+                }
                 p { class: "m-0 mt-3 text-xs leading-6 text-slate-300", "{snapshot.detail}" }
                 p { class: "m-0 mt-2 text-xs leading-6 text-slate-300", "Gateway URL: {snapshot.gateway_url}" }
                 if let Some(protocol_version) = snapshot.protocol_version {

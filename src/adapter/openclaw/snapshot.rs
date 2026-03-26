@@ -83,3 +83,42 @@ pub(super) fn snapshot_active_sessions(
 
     fallback_recent_active_sessions(health)
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::snapshot_active_sessions;
+    use crate::utils::time::ACTIVE_WINDOW_MS;
+
+    /// Documents the gap fixed by reading `sessions.recent` in `map_agent_node`: fallback session
+    /// synthesis intentionally ignores stale recent rows, so graph nodes cannot rely on merge alone.
+    #[test]
+    fn active_session_fallback_omits_recent_sessions_older_than_active_window() {
+        let stale_age = ACTIVE_WINDOW_MS + 9_000;
+        let payload = json!({
+            "snapshot": {
+                "health": {
+                    "agents": [{
+                        "agentId": "quiet-agent",
+                        "sessions": {
+                            "recent": [{
+                                "key": "sess-stale",
+                                "sessionId": "sess-stale",
+                                "age": stale_age
+                            }]
+                        }
+                    }],
+                    "bindings": [],
+                    "activeSessions": []
+                }
+            }
+        });
+
+        let sessions = snapshot_active_sessions(&payload).expect("snapshot active sessions");
+        assert!(
+            sessions.is_empty(),
+            "stale recent session must not appear as an active-session row; graph needs node-level recency"
+        );
+    }
+}

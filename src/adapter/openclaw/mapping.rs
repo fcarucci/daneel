@@ -7,6 +7,24 @@ use crate::models::{
     runtime::ActiveSessionRecord,
 };
 
+/// Age of the newest entry in `sessions.recent`, matching `gateway::agents::map_session_recency`.
+/// Graph assembly previously omitted this and only merged ages from `snapshot_active_sessions`,
+/// whose fallback ignores sessions outside the short “active” window, so idle agents looked
+/// `Unknown` even when the gateway had recency data here.
+pub(super) fn latest_recent_session_age_ms(agent: &Value) -> Option<u64> {
+    agent
+        .get("sessions")
+        .and_then(|sessions| sessions.get("recent"))
+        .and_then(Value::as_array)
+        .and_then(|entries| entries.first())
+        .and_then(|entry| {
+            entry
+                .get("ageMs")
+                .or_else(|| entry.get("age"))
+                .and_then(Value::as_u64)
+        })
+}
+
 pub(super) fn map_heartbeat(agent: &Value) -> (bool, String) {
     let heartbeat = agent.get("heartbeat").unwrap_or(&Value::Null);
     let enabled = heartbeat
@@ -38,6 +56,12 @@ pub(super) fn map_agent_node(agent: &Value) -> Result<AgentNode, String> {
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let (heartbeat_enabled, heartbeat_schedule) = map_heartbeat(agent);
+    let latest_activity_age_ms = latest_recent_session_age_ms(agent);
+    let status = if latest_activity_age_ms.is_some() {
+        AgentStatus::Idle
+    } else {
+        AgentStatus::Unknown
+    };
 
     Ok(AgentNode {
         id,
@@ -46,8 +70,8 @@ pub(super) fn map_agent_node(agent: &Value) -> Result<AgentNode, String> {
         heartbeat_enabled,
         heartbeat_schedule,
         active_session_count: 0,
-        latest_activity_age_ms: None,
-        status: AgentStatus::Unknown,
+        latest_activity_age_ms,
+        status,
     })
 }
 

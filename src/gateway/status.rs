@@ -61,13 +61,18 @@ pub(crate) fn map_gateway_status_snapshot(
 
     let health = health_status_from_payload(health_frame.payload.as_ref());
 
-    GatewayStatusSnapshot {
-        connected: true,
-        level: health.level(),
-        summary: format!(
+    let summary = match health.state {
+        HealthState::Healthy => "Connected to the OpenClaw Gateway over WebSocket.".to_string(),
+        HealthState::Degraded => format!(
             "Connected to the OpenClaw Gateway over WebSocket ({}).",
             health.label
         ),
+    };
+
+    GatewayStatusSnapshot {
+        connected: true,
+        level: health.level(),
+        summary,
         detail: format!(
             "Gateway status was fetched through the documented loopback WS connection at {}.",
             config.ws_url

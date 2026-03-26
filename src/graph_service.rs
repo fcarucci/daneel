@@ -178,6 +178,8 @@ fn edge_kind_priority(kind: &AgentEdgeKind) -> u8 {
     }
 }
 
+/// Active sessions win; else if any last-activity age is known (from `sessions.recent` or merged
+/// active-session rows) the agent is idle; else `Unknown` (agent in snapshot without recency).
 fn derive_status(latest_activity_age_ms: Option<u64>, active_session_count: u64) -> AgentStatus {
     if active_session_count > 0 {
         AgentStatus::Active
@@ -209,6 +211,7 @@ mod tests {
         graph::{AgentEdge, AgentEdgeKind, AgentNode, AgentStatus},
         runtime::ActiveSessionRecord,
     };
+    use crate::utils::time::ACTIVE_WINDOW_MS;
     #[cfg(feature = "server")]
     use crate::{
         adapter::GatewayAdapter,
@@ -297,6 +300,32 @@ mod tests {
 
         assert_eq!(snapshot.nodes.len(), 2);
         assert_eq!(snapshot.edges.len(), 1);
+    }
+
+    /// Regression: `snapshot_active_sessions` fallback only keeps recent rows with age inside the
+    /// active window, so agents with older `sessions.recent` ages must still carry
+    /// `latest_activity_age_ms` on the node (from `map_agent_node`) or they collapse to `Unknown`.
+    #[test]
+    fn stale_recent_session_age_stays_idle_when_no_active_session_rows_merge_in() {
+        let stale_ms = ACTIVE_WINDOW_MS + 123_456;
+        let snapshot = assemble_graph_snapshot(
+            assembly_inputs(
+                vec![agent("stale-agent", Some(stale_ms), 0, AgentStatus::Idle)],
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            ),
+            77,
+        );
+
+        let node = snapshot
+            .nodes
+            .iter()
+            .find(|n| n.id == "stale-agent")
+            .expect("stale-agent node");
+        assert_eq!(node.latest_activity_age_ms, Some(stale_ms));
+        assert_eq!(node.active_session_count, 0);
+        assert_eq!(node.status, AgentStatus::Idle);
     }
 
     #[test]

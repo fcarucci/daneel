@@ -378,12 +378,13 @@ npm run dev
 
 Then open `/` and verify the card labeled `Gateway status` renders one of:
 
-- `Connected to the OpenClaw Gateway over WebSocket (healthy).`
+- `Connected to the OpenClaw Gateway over WebSocket.` once in the top gateway summary row (not repeated in the detail panel when healthy)
 - a degraded state with a specific gateway/config error message
 
 Known-good healthy render signals:
 
-- badge text `Healthy`
+- summary row: large `Healthy` plus the connection line above
+- detail panel: fetch path, `Gateway URL`, and uptime (no second healthy badge or duplicate headline sentence)
 - `Gateway URL: ws://127.0.0.1:18789/`
 - a live uptime value in milliseconds
 
