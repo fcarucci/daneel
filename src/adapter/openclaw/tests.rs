@@ -18,7 +18,9 @@ use tungstenite::{Message, accept};
 
 use crate::{
     adapter::GatewayAdapter,
+    graph_service::load_graph_snapshot,
     models::graph::{AgentEdgeKind, AgentStatus},
+    utils::time::ACTIVE_WINDOW_MS,
 };
 
 use super::{
@@ -238,6 +240,33 @@ fn openclaw_agent_json_maps_to_agent_node() {
     assert_eq!(node.active_session_count, 0);
     assert_eq!(node.latest_activity_age_ms, None);
     assert_eq!(node.status, AgentStatus::Unknown);
+}
+
+#[test]
+fn openclaw_agent_maps_latest_recent_session_age_from_health_shape() {
+    let node = map_agent_node(&json!({
+        "agentId": "coder",
+        "sessions": {
+            "recent": [{ "key": "sess-1", "age": 420_000 }]
+        }
+    }))
+    .expect("map agent with recent session");
+
+    assert_eq!(node.latest_activity_age_ms, Some(420_000));
+    assert_eq!(node.status, AgentStatus::Idle);
+}
+
+#[test]
+fn openclaw_agent_prefers_age_ms_over_age_in_recent_session() {
+    let node = map_agent_node(&json!({
+        "agentId": "locator",
+        "sessions": {
+            "recent": [{ "key": "a", "age": 100, "ageMs": 99 }]
+        }
+    }))
+    .expect("map agent");
+
+    assert_eq!(node.latest_activity_age_ms, Some(99));
 }
 
 #[test]
@@ -498,6 +527,51 @@ async fn list_agents_reads_nodes_from_gateway_snapshot() {
     assert_eq!(agents[0].heartbeat_schedule, "15m");
     assert_eq!(agents[1].id, "planner");
     assert_eq!(agents[1].name, "planner");
+}
+
+/// End-to-end regression: `snapshot_active_sessions` drops `sessions.recent` rows older than the
+/// active window, so `map_agent_node` must copy that age onto the graph node or the agent becomes
+/// `Unknown` with no recency in the UI.
+#[tokio::test]
+#[serial]
+async fn graph_preserves_stale_recent_session_idle_without_active_session_rows() {
+    let stale_age = ACTIVE_WINDOW_MS + 77_000;
+    let gateway = MockGateway::spawn(gateway_snapshot_payload_with_sessions(
+        json!([{
+            "agentId": "stale-agent",
+            "name": "Stale",
+            "sessions": {
+                "recent": [{
+                    "key": "sess-1",
+                    "sessionId": "sess-1",
+                    "age": stale_age
+                }]
+            }
+        }]),
+        json!([]),
+        json!([]),
+    ))
+    .expect("spawn mock gateway");
+    let tempdir = tempdir().expect("create tempdir");
+    let config_path =
+        write_openclaw_config(tempdir.path(), gateway.addr.port()).expect("write openclaw config");
+    let _guard = EnvVarGuard::set(
+        "OPENCLAW_CONFIG_PATH",
+        config_path.to_str().expect("config path as utf-8"),
+    );
+
+    let snapshot = load_graph_snapshot(&OpenClawAdapter, 42)
+        .await
+        .expect("load graph snapshot");
+
+    let node = snapshot
+        .nodes
+        .iter()
+        .find(|n| n.id == "stale-agent")
+        .expect("stale-agent in snapshot");
+    assert_eq!(node.latest_activity_age_ms, Some(stale_age));
+    assert_eq!(node.active_session_count, 0);
+    assert_eq!(node.status, AgentStatus::Idle);
 }
 
 #[test]

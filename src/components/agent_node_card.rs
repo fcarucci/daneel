@@ -12,19 +12,19 @@ const MAX_LABEL_CHARS: usize = 18;
 pub fn AgentNodeCard(node: AgentNode, x: f32, y: f32) -> Element {
     let title = truncated_graph_label(node.name.as_str());
     let monogram = node_monogram(node.name.as_str());
-    let activity = activity_label(&node);
-    let status_text = status_label(&node.status);
+    let show_status_and_latest = node.status != AgentStatus::Unknown;
+    let status_slug = status_data_slug(&node.status);
     let aria_label = format!(
-        "{} agent card, status {}",
+        "{} agent card, {}",
         node.name,
-        status_text.to_lowercase()
+        status_aria_phrase(&node.status)
     );
     let heartbeat = heartbeat_label(&node);
 
     rsx! {
         g {
             "data-agent-node": node.id.as_str(),
-            "data-agent-node-status": status_text.to_lowercase(),
+            "data-agent-node-status": status_slug,
             transform: format!("translate({x} {y})"),
             tabindex: "0",
             "focusable": "true",
@@ -92,22 +92,24 @@ pub fn AgentNodeCard(node: AgentNode, x: f32, y: f32) -> Element {
                 letter_spacing: "0.12em",
                 {heartbeat}
             }
-            text {
-                x: "34",
-                y: "118",
-                fill: "#94a3b8",
-                font_size: "21",
-                font_weight: "700",
-                letter_spacing: "0.16em",
-                {status_text}
-            }
-            text {
-                x: "34",
-                y: "154",
-                fill: "#cbd5e1",
-                font_size: "21",
-                "Latest: "
-                {activity}
+            if show_status_and_latest {
+                text {
+                    x: "34",
+                    y: "118",
+                    fill: "#94a3b8",
+                    font_size: "21",
+                    font_weight: "700",
+                    letter_spacing: "0.16em",
+                    {status_headline(&node.status)}
+                }
+                text {
+                    x: "34",
+                    y: "154",
+                    fill: "#cbd5e1",
+                    font_size: "21",
+                    "Latest: "
+                    {activity_label(&node)}
+                }
             }
             if node.is_default {
                 g { "data-agent-default-badge": node.id.as_str(),
@@ -170,11 +172,30 @@ pub(crate) fn node_signal(status: &AgentStatus) -> &'static str {
     }
 }
 
-pub(crate) fn status_label(status: &AgentStatus) -> &'static str {
+fn status_headline(status: &AgentStatus) -> &'static str {
     match status {
         AgentStatus::Active => "ACTIVE",
         AgentStatus::Idle => "IDLE",
-        AgentStatus::Unknown => "UNKNOWN",
+        AgentStatus::Unknown => "",
+    }
+}
+
+/// Stable `data-agent-node-status` token (kebab-case, no spaces).
+pub(crate) fn status_data_slug(status: &AgentStatus) -> &'static str {
+    match status {
+        AgentStatus::Active => "active",
+        AgentStatus::Idle => "idle",
+        AgentStatus::Unknown => "unknown",
+    }
+}
+
+fn status_aria_phrase(status: &AgentStatus) -> &'static str {
+    match status {
+        AgentStatus::Active => "status active",
+        AgentStatus::Idle => "status idle",
+        AgentStatus::Unknown => {
+            "runtime status not shown; gateway snapshot has no recent session age for this agent"
+        }
     }
 }
 
@@ -291,6 +312,14 @@ mod tests {
         });
 
         assert!(html.contains("this-agent-name-i…"));
-        assert!(html.contains("No recent activity"));
+        assert!(
+            !html.contains("Latest:"),
+            "unknown nodes omit the Latest line"
+        );
+        assert!(html.contains("data-agent-node-status=\"unknown\""));
+        assert!(
+            !html.contains("NO RECENCY") && !html.contains("NO SIGNAL"),
+            "unknown nodes do not show a synthetic status headline"
+        );
     }
 }

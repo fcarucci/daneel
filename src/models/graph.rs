@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 pub enum AgentStatus {
     Active,
     Idle,
+    /// No `latest_activity_age_ms` and no active sessions: the gateway health snapshot listed the
+    /// agent but omitted `sessions.recent` (or its newest entry had no `age` / `ageMs`). Distinct
+    /// from [`Idle`](AgentStatus::Idle), where recency is present.
     Unknown,
 }
 

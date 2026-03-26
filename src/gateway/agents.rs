@@ -172,7 +172,7 @@ fn map_session_recency(
         .and_then(Value::as_str)
         .map(ToOwned::to_owned);
     let latest_activity_age_ms = recent
-        .and_then(|entry| entry.get("age"))
+        .and_then(|entry| entry.get("ageMs").or_else(|| entry.get("age")))
         .and_then(Value::as_u64);
 
     Ok((
