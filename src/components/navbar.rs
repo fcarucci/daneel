@@ -10,7 +10,8 @@ use crate::models::live_gateway::OperatorConnectionState;
 
 #[component]
 pub fn TopBar() -> Element {
-    let gateway_status = use_dashboard_data().gateway_status.clone();
+    let ctx = use_dashboard_data();
+    let gateway_status = ctx.gateway_status.clone();
     let live_gateway = use_live_gateway();
     let operator_state = resolved_live_level(&gateway_status, &live_gateway);
 

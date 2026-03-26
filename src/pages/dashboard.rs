@@ -26,13 +26,13 @@ struct SummaryCardModel {
 
 #[component]
 pub fn Dashboard() -> Element {
-    let dash = use_dashboard_data();
+    let ctx = use_dashboard_data();
     let live_gateway = use_live_gateway();
     let operator_state = live_gateway.operator_state();
-    let gateway_status = dash.gateway_status.clone();
-    let graph_snapshot = dash.graph_snapshot.clone();
-    let cached_gateway_status = dash.cached_gateway_status;
-    let cached_graph_snapshot = dash.cached_graph_snapshot;
+    let gateway_status = ctx.gateway_status.clone();
+    let graph_snapshot = ctx.graph_snapshot.clone();
+    let cached_gateway_status = ctx.cached_gateway_status;
+    let cached_graph_snapshot = ctx.cached_graph_snapshot;
 
     rsx! {
         section { class: "flex flex-col gap-5",

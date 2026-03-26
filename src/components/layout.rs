@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::components::{
-    agent_overview::AgentOverviewProvider,
+    agent_overview_data::AgentOverviewDataProvider,
     dashboard_data::DashboardDataProvider,
     live_gateway::{LiveGatewayProvider, use_live_gateway},
     navbar::TopBar,
@@ -16,7 +16,7 @@ pub fn AppLayout() -> Element {
     rsx! {
         LiveGatewayProvider {
             DashboardDataProvider {
-                AgentOverviewProvider {
+                AgentOverviewDataProvider {
                     div {
                         class: "mission-shell min-h-screen bg-[var(--app-bg)] text-[var(--ink-0)]",
                         "data-visual-shell": "mission-control",

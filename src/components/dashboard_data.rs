@@ -7,6 +7,7 @@
 use dioxus::prelude::*;
 
 use crate::client::use_app_client;
+use crate::components::shell_provider_utils::sync_last_ok_snapshot;
 use crate::models::{gateway::GatewayStatusSnapshot, graph::AgentGraphSnapshot};
 
 #[derive(Clone)]
@@ -36,24 +37,22 @@ pub fn DashboardDataProvider(children: Element) -> Element {
         async move { client.get_agent_graph_snapshot().await }
     });
 
-    let mut cached_gateway_status = use_signal(|| None::<GatewayStatusSnapshot>);
-    let mut cached_graph_snapshot = use_signal(|| None::<AgentGraphSnapshot>);
+    let cached_gateway_status = use_signal(|| None::<GatewayStatusSnapshot>);
+    let cached_graph_snapshot = use_signal(|| None::<AgentGraphSnapshot>);
 
     use_effect({
         let gateway_status = gateway_status.clone();
+        let cache = cached_gateway_status;
         move || {
-            if let Some(Ok(snapshot)) = gateway_status.read().as_ref() {
-                cached_gateway_status.set(Some(snapshot.clone()));
-            }
+            sync_last_ok_snapshot(&gateway_status, cache);
         }
     });
 
     use_effect({
         let graph_snapshot = graph_snapshot.clone();
+        let cache = cached_graph_snapshot;
         move || {
-            if let Some(Ok(snapshot)) = graph_snapshot.read().as_ref() {
-                cached_graph_snapshot.set(Some(snapshot.clone()));
-            }
+            sync_last_ok_snapshot(&graph_snapshot, cache);
         }
     });
 

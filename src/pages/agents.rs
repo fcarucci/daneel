@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::components::agent_overview::use_agent_overview;
+use crate::components::agent_overview_data::use_agent_overview_data;
 use crate::models::agents::{AgentOverviewItem, AgentOverviewSnapshot};
 use crate::utils::time::{ACTIVE_WINDOW_MS, format_age_badge, heartbeat_is_active};
 
@@ -19,7 +19,7 @@ const RECENT_BADGE_IDLE_CLASS: &str = "inline-flex rounded-full border border-wh
 
 #[component]
 pub fn Agents() -> Element {
-    let ctx = use_agent_overview();
+    let ctx = use_agent_overview_data();
 
     rsx! {
         section { class: "flex flex-col gap-5", "data-agents-route": "enhanced",
