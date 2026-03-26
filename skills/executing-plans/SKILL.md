@@ -27,7 +27,8 @@ For each task:
 1. Mark as in_progress
 2. Follow each step exactly (plan has bite-sized steps)
 3. Run verifications as specified
-4. Mark as completed
+4. **End-of-implementation refactoring (mandatory):** run the `refactoring` skill on all files you changed for this task (features **and** bug fixes), then rerun the plan’s fast checks. Ad-hoc tidying while coding does not count.
+5. Mark as completed
 
 ### Step 3: Complete Development
 

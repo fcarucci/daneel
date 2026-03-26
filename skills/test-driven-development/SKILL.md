@@ -68,6 +68,8 @@ digraph tdd_cycle {
 }
 ```
 
+When your **project’s agent or workflow docs** require it, a green outer slice still needs a **dedicated** `refactoring` skill pass on all touched files (including bug fixes). Micro-refactors inside the red-green-refactor loop above do not replace that pass.
+
 ### RED - Write Failing Test
 
 Write one minimal test showing what should happen.

@@ -20,3 +20,4 @@ cargo test --bin daneel  # run tests
 - Use DeepSeek V3.1 for implementation and review
 - Clone to temp location, never work directly in ~/dev/daneel
 - Follow full workflow from /root/dev/daneel/docs/agent-workflows/DANEEL_WORKFLOW.md
+- After **every** implementation slice (feature **or** bug fix): run the `refactoring` skill on touched files, re-verify, then continue (see `skills/refactoring/`, `skills/subagent-driven-development/`)

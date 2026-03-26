@@ -1,11 +1,11 @@
 ---
 name: subagent-driven-development
-description: Use when executing implementation plans with independent tasks in the current session
+description: Use when executing implementation plans with independent tasks in the current session; requires a refactoring skill pass at the end of each implementation slice (features and bug fixes) before the next review gate
 ---
 
 # Subagent-Driven Development
 
-Execute plan by dispatching fresh subagent per task, with two-stage review after each: spec compliance review first, then code quality review.
+Execute plan by dispatching fresh subagent per task. After each **implementation** slice (initial build or follow-up fixes), run a **mandatory refactoring pass** before the next gate. Then two-stage review: spec compliance first, then code quality.
 
 **Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
@@ -49,10 +49,11 @@ digraph process {
         "Implementer subagent asks questions?" [shape=diamond];
         "Answer questions, provide context" [shape=box];
         "Implementer subagent implements, tests, commits, self-reviews" [shape=box];
+        "Run explicit refactoring pass (end of implementation)" [shape=box];
         "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" [shape=box];
         "Spec reviewer subagent confirms code matches spec?" [shape=diamond];
         "Implementer subagent fixes spec gaps" [shape=box];
-        "Run explicit refactoring pass" [shape=box];
+        "Run explicit refactoring pass (after quality fixes)" [shape=box];
         "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [shape=box];
         "Code quality reviewer subagent approves?" [shape=diamond];
         "Implementer subagent fixes quality issues" [shape=box];
@@ -69,15 +70,16 @@ digraph process {
     "Implementer subagent asks questions?" -> "Answer questions, provide context" [label="yes"];
     "Answer questions, provide context" -> "Dispatch implementer subagent (./implementer-prompt.md)";
     "Implementer subagent asks questions?" -> "Implementer subagent implements, tests, commits, self-reviews" [label="no"];
-    "Implementer subagent implements, tests, commits, self-reviews" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)";
+    "Implementer subagent implements, tests, commits, self-reviews" -> "Run explicit refactoring pass (end of implementation)";
+    "Implementer subagent fixes spec gaps" -> "Run explicit refactoring pass (end of implementation)";
+    "Run explicit refactoring pass (end of implementation)" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)";
     "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" -> "Spec reviewer subagent confirms code matches spec?";
     "Spec reviewer subagent confirms code matches spec?" -> "Implementer subagent fixes spec gaps" [label="no"];
-    "Implementer subagent fixes spec gaps" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" [label="re-review"];
-    "Spec reviewer subagent confirms code matches spec?" -> "Run explicit refactoring pass" [label="yes"];
-    "Run explicit refactoring pass" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)";
+    "Spec reviewer subagent confirms code matches spec?" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="yes"];
     "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" -> "Code quality reviewer subagent approves?";
     "Code quality reviewer subagent approves?" -> "Implementer subagent fixes quality issues" [label="no"];
-    "Implementer subagent fixes quality issues" -> "Run explicit refactoring pass" [label="re-review"];
+    "Implementer subagent fixes quality issues" -> "Run explicit refactoring pass (after quality fixes)";
+    "Run explicit refactoring pass (after quality fixes)" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)";
     "Code quality reviewer subagent approves?" -> "Mark task complete in task tracker" [label="yes"];
     "Mark task complete in task tracker" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
@@ -119,15 +121,15 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 **Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
 
-## Refactoring Step
+## Refactoring Step (mandatory — features and bug fixes)
 
-After spec compliance passes for a task, run an explicit refactoring pass before code-quality review.
+**Run a refactoring pass at the end of every implementation slice**, before the next review gate. That includes new features, bug fixes, spec-gap fixes, and (before code-quality re-review) quality-gap fixes. Opportunistic cleanup while typing does **not** count.
 
-- Use the `refactoring` skill on the files changed by that task.
-- Keep the refactor behavior-preserving and scoped to the task that just passed spec review.
-- Re-run the fastest relevant verification after the refactor before moving to code-quality review.
-- If the code-quality reviewer requests additional structural cleanup, apply the fixes, then run the explicit refactoring pass again before re-review.
-- Do not ask the user for permission to run this refactoring pass. It is part of the required workflow once spec review passes.
+1. **After the implementer finishes a green slice** (tests pass, self-review done): run the `refactoring` skill on all files touched in that slice, re-run the fastest relevant verification, then dispatch the **spec** reviewer.
+2. **After spec compliance passes:** go straight to **code-quality** review (no extra refactor gate unless implementation changed again).
+3. **After the implementer fixes code-quality issues:** run the `refactoring` skill on the changed files again, re-verify, then dispatch **code-quality** re-review.
+4. If the code-quality reviewer asks for structural follow-up, apply it, then run the explicit refactoring pass again before the next re-review.
+5. Do not ask the user for permission; this is part of the required workflow for **any** implementation work, not only large features.
 
 ## Prompt Templates
 
@@ -160,6 +162,8 @@ Implementer: "Got it. Implementing now..."
   - Self-review: Found I missed --force flag, added it
   - Committed
 
+[Run refactoring skill on changed files; rerun fast verification]
+
 [Dispatch spec compliance reviewer]
 Spec reviewer: ✅ Spec compliant - all requirements met, nothing extra
 
@@ -180,6 +184,8 @@ Implementer:
   - Self-review: All good
   - Committed
 
+[Run refactoring skill on changed files; rerun fast verification]
+
 [Dispatch spec compliance reviewer]
 Spec reviewer: ❌ Issues:
   - Missing: Progress reporting (spec says "report every 100 items")
@@ -187,6 +193,8 @@ Spec reviewer: ❌ Issues:
 
 [Implementer fixes issues]
 Implementer: Removed --json flag, added progress reporting
+
+[Run refactoring skill on changed files; rerun fast verification]
 
 [Spec reviewer reviews again]
 Spec reviewer: ✅ Spec compliant now
@@ -196,6 +204,8 @@ Code reviewer: Strengths: Solid. Issues (Important): Magic number (100)
 
 [Implementer fixes]
 Implementer: Extracted PROGRESS_INTERVAL constant
+
+[Run refactoring skill on changed files; rerun fast verification]
 
 [Code reviewer reviews again]
 Code reviewer: ✅ Approved
@@ -232,7 +242,7 @@ Done!
 
 **Quality gates:**
 - Self-review catches issues before handoff
-- Explicit refactoring pass happens after spec compliance and before code-quality review
+- Explicit refactoring pass happens **after each implementation slice** and **before spec review**; again **after quality-fix implementation** before code-quality re-review
 - Two-stage review: spec compliance, then code quality
 - Review loops ensure fixes actually work
 - Spec compliance prevents over/under-building
@@ -249,14 +259,15 @@ Done!
 **Never:**
 - Start implementation on main/master branch without explicit user consent
 - Skip reviews (spec compliance OR code quality)
-- Skip the refactoring pass after spec review
+- Skip the refactoring pass at the end of an implementation slice (features, bugs, or review-driven fixes)
 - Proceed with unfixed issues
 - Dispatch multiple implementation subagents in parallel (conflicts)
 - Make subagent read plan file (provide full text instead)
 - Skip scene-setting context (subagent needs to understand where task fits)
 - Ignore subagent questions (answer before letting them proceed)
 - Accept "close enough" on spec compliance (spec reviewer found issues = not done)
-- Start code quality review before the refactoring pass is complete
+- Dispatch spec review before the post-implementation refactoring pass has finished
+- Start code-quality re-review before the post-fix refactoring pass has finished
 - Skip review loops (reviewer found issues = implementer fixes = review again)
 - Let implementer self-review replace actual review (both are needed)
 - **Start code quality review before spec compliance is ✅** (wrong order)
@@ -282,6 +293,7 @@ Done!
 **Required workflow skills and practices:**
 - **`using-git-worktrees`** - REQUIRED: Set up an isolated workspace before starting
 - **`writing-plans`** - Creates the plan this skill executes
+- **`refactoring`** - REQUIRED after every implementation slice (features, bugs, review-driven fixes) before the next gate
 - **`requesting-code-review`** - Code review template for reviewer subagents
 - **`finishing-a-development-branch`** - Complete development after all tasks
 

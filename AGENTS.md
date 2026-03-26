@@ -43,6 +43,8 @@ If there is any conflict or overlap about task execution order, verification ord
 refactoring, review gates, or push/commit readiness, follow
 `docs/agent-workflows/DANEEL_WORKFLOW.md`.
 
+**Refactoring (non-negotiable):** At the end of **every** implementation slice—**features and bug fixes** alike—run a dedicated **`refactoring` skill** pass on the touched files (see `skills/refactoring/`), re-run the relevant verification, then proceed to the next gate or commit. Ad-hoc cleanup while coding does not replace this pass. Full ordering and gates are in `docs/agent-workflows/DANEEL_WORKFLOW.md`.
+
 ## Current Tech Stack
 
 - Rust edition `2024`
