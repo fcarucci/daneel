@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::client::use_app_client;
+use crate::components::agent_overview_data::use_agent_overview_data;
 use crate::models::agents::{AgentOverviewItem, AgentOverviewSnapshot};
 use crate::utils::time::{ACTIVE_WINDOW_MS, format_age_badge, heartbeat_is_active};
 
@@ -19,11 +19,7 @@ const RECENT_BADGE_IDLE_CLASS: &str = "inline-flex rounded-full border border-wh
 
 #[component]
 pub fn Agents() -> Element {
-    let client = use_app_client();
-    let agent_overview = use_resource(move || {
-        let client = client.clone();
-        async move { client.get_agent_overview().await }
-    });
+    let ctx = use_agent_overview_data();
 
     rsx! {
         section { class: "flex flex-col gap-5", "data-agents-route": "enhanced",
@@ -31,47 +27,121 @@ pub fn Agents() -> Element {
                 p { class: "page-kicker m-0 text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-[var(--signal)]", "Graph View" }
                 p { class: "m-0 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base", "Inspect configured agents, heartbeat posture, and recent runtime activity from the live gateway snapshot." }
             }
-            AgentOverviewSection { agent_overview }
+            AgentOverviewSection {
+                overview: ctx.overview.clone(),
+                last_ok: ctx.last_ok,
+            }
         }
     }
 }
 
 #[component]
 fn AgentOverviewSection(
-    agent_overview: Resource<Result<AgentOverviewSnapshot, ServerFnError>>,
+    overview: Resource<Result<AgentOverviewSnapshot, ServerFnError>>,
+    last_ok: Signal<Option<AgentOverviewSnapshot>>,
 ) -> Element {
-    match &*agent_overview.read_unchecked() {
-        Some(Ok(snapshot)) => rsx! {
-            div { class: "mt-2 flex items-center gap-3",
-                p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-slate-400", "Agent tiles" }
-                p { class: "m-0 text-sm text-slate-400", "{snapshot.active_recent_agents}/{snapshot.total_agents} active in the last 10 minutes" }
+    let cached = last_ok;
+
+    match agent_overview_view(overview.read_unchecked().as_ref(), cached()) {
+        AgentOverviewView::Ready {
+            snapshot,
+            refreshing,
+            refresh_error,
+        } => rsx! {
+            if let Some(msg) = refresh_error {
+                article { class: "polish-panel rounded-[1.6rem] border border-amber-400/20 bg-amber-400/10 p-4 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl", "data-agents-state": "error",
+                    p { class: "m-0 text-sm leading-6 text-amber-100/90", "{msg}" }
+                    button {
+                        class: "mt-3 inline-flex items-center rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-medium text-slate-100 transition hover:border-white/20 hover:bg-white/8",
+                        onclick: move |_| {
+                            let mut overview = overview.clone();
+                            overview.restart();
+                        },
+                        "Retry"
+                    }
+                }
             }
-            div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4", "data-agents-polish": "enhanced",
+            div { class: "mt-2 flex flex-wrap items-center gap-3",
+                p { class: "m-0 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-slate-400", "Agent tiles" }
+                if refreshing {
+                    p { class: "m-0 text-[0.68rem] font-medium uppercase tracking-[0.18em] text-slate-500", "Refreshing…" }
+                }
+            }
+            div { class: "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4", "data-agents-polish": "enhanced", "data-agents-state": if refreshing { "stale-refresh" } else { "ready" },
                 for agent in snapshot.agents.iter() {
                     AgentCard { agent: agent.clone() }
                 }
             }
         },
-        Some(Err(error)) => rsx! {
+        AgentOverviewView::Error { message } => rsx! {
             article { class: "polish-panel rounded-[1.6rem] border border-amber-400/20 bg-amber-400/10 p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl", "data-agents-state": "error",
                 h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-amber-100", "Gateway lookup failed" }
-                p { class: "m-0 mt-3 text-sm leading-6 text-amber-100/90", "{error}" }
+                p { class: "m-0 mt-3 text-sm leading-6 text-amber-100/90", "{message}" }
                 button {
                     class: "mt-4 inline-flex items-center rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-medium text-slate-100 transition hover:border-white/20 hover:bg-white/8",
                     onclick: move |_| {
-                        let mut agent_overview = agent_overview;
-                        agent_overview.restart();
+                        let mut overview = overview.clone();
+                        overview.restart();
                     },
                     "Retry"
                 }
             }
         },
-        None => rsx! {
+        AgentOverviewView::Loading => rsx! {
             article { class: "polish-panel rounded-[1.6rem] border border-white/10 bg-[var(--panel-bg)] p-6 shadow-[0_24px_64px_rgba(2,6,23,0.35)] backdrop-blur-xl", "data-agents-state": "loading",
                 h3 { class: "m-0 text-lg font-semibold tracking-[-0.03em] text-white", "Loading agents" }
                 p { class: "m-0 mt-3 text-sm leading-6 text-slate-300", "Requesting the current agent inventory from the OpenClaw gateway snapshot..." }
             }
         },
+    }
+}
+
+enum AgentOverviewView {
+    Loading,
+    Error {
+        message: String,
+    },
+    Ready {
+        snapshot: AgentOverviewSnapshot,
+        refreshing: bool,
+        refresh_error: Option<String>,
+    },
+}
+
+fn agent_overview_view(
+    current: Option<&Result<AgentOverviewSnapshot, ServerFnError>>,
+    cached: Option<AgentOverviewSnapshot>,
+) -> AgentOverviewView {
+    match current {
+        Some(Ok(snapshot)) => AgentOverviewView::Ready {
+            snapshot: snapshot.clone(),
+            refreshing: false,
+            refresh_error: None,
+        },
+        Some(Err(error)) => {
+            if let Some(snapshot) = cached {
+                AgentOverviewView::Ready {
+                    snapshot,
+                    refreshing: false,
+                    refresh_error: Some(error.to_string()),
+                }
+            } else {
+                AgentOverviewView::Error {
+                    message: error.to_string(),
+                }
+            }
+        }
+        None => {
+            if let Some(snapshot) = cached {
+                AgentOverviewView::Ready {
+                    snapshot,
+                    refreshing: true,
+                    refresh_error: None,
+                }
+            } else {
+                AgentOverviewView::Loading
+            }
+        }
     }
 }
 

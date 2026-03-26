@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::client::use_app_client;
+use crate::components::dashboard_data::use_dashboard_data;
 use crate::components::live_gateway::{
     gateway_snapshot_level, resolve_operator_state_with_gateway_snapshot, use_live_gateway,
 };
@@ -10,11 +10,8 @@ use crate::models::live_gateway::OperatorConnectionState;
 
 #[component]
 pub fn TopBar() -> Element {
-    let client = use_app_client();
-    let gateway_status = use_resource(move || {
-        let client = client.clone();
-        async move { client.get_gateway_status().await }
-    });
+    let ctx = use_dashboard_data();
+    let gateway_status = ctx.gateway_status.clone();
     let live_gateway = use_live_gateway();
     let operator_state = resolved_live_level(&gateway_status, &live_gateway);
 

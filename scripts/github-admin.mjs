@@ -151,6 +151,7 @@ Commands:
   list-issue-comments --issue <n>
   delete-issue-comment --comment-id <n>
   update-issue --number <n> [--title <title>] [--body <text>] [--state <open|closed>] [--labels <a,b,c>]
+  create-issue --title <title> [--body <text>] [--labels <a,b,c>] [--milestone <n>] [--assignees <login,login>]
   list-open-prs
   list-prs [--state <open|closed|all>]
   comment-pr --number <n> --body <text>
@@ -807,9 +808,7 @@ function pullUrl(pullNumber) {
 
 function buildPullRequestBody(options, issue) {
   const sections = [];
-  const taskTag = options.issue
-    ? `Task: #${issue.number} ${issue.title}`
-    : null;
+  const taskTag = options.issue ? `Task: #${issue.number}` : null;
   if (taskTag) {
     sections.push(taskTag);
   }
@@ -1331,6 +1330,56 @@ async function updatePr(options) {
         head: pull.head.ref,
         base: pull.base.ref,
         url: pull.html_url,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function createIssue(options) {
+  const { owner, repo } = repoParts();
+  const title = options.title != null ? String(options.title).trim() : "";
+  if (!title) {
+    throw new Error("create-issue requires --title <text>.");
+  }
+
+  const payload = {
+    title,
+    body: options.body != null ? String(options.body) : "",
+  };
+
+  if (options.labels) {
+    payload.labels = String(options.labels)
+      .split(",")
+      .map((label) => label.trim())
+      .filter(Boolean);
+  }
+
+  if (options.milestone) {
+    const milestone = Number(options.milestone);
+    if (!Number.isInteger(milestone) || milestone <= 0) {
+      throw new Error("create-issue --milestone must be a positive integer (repo milestone number).");
+    }
+    payload.milestone = milestone;
+  }
+
+  if (options.assignees) {
+    payload.assignees = String(options.assignees)
+      .split(",")
+      .map((login) => login.trim())
+      .filter(Boolean);
+  }
+
+  const issue = await rest("POST", `/repos/${owner}/${repo}/issues`, payload);
+  console.log(
+    JSON.stringify(
+      {
+        number: issue.number,
+        state: issue.state,
+        title: issue.title,
+        url: issue.html_url,
+        labels: issue.labels?.map((label) => label.name) || [],
       },
       null,
       2,
@@ -1935,6 +1984,7 @@ const commands = {
   "list-issue-comments": () => listIssueComments(options),
   "delete-issue-comment": () => deleteIssueComment(options),
   "update-issue": () => updateIssue(options),
+  "create-issue": () => createIssue(options),
   "list-open-prs": listOpenPrs,
   "list-prs": () => listPrs(options),
   "comment-pr": () => commentPr(options),

@@ -27,6 +27,7 @@ npm-debug.log*
 # IDE settings
 .idea/
 .vscode/
+.cursor/
 
 # Test artifacts and logs
 *.log

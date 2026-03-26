@@ -3,6 +3,8 @@
 use dioxus::prelude::*;
 
 use crate::components::{
+    agent_overview_data::AgentOverviewDataProvider,
+    dashboard_data::DashboardDataProvider,
     live_gateway::{LiveGatewayProvider, use_live_gateway},
     navbar::TopBar,
     sidebar::Sidebar,
@@ -13,12 +15,16 @@ use crate::router::Route;
 pub fn AppLayout() -> Element {
     rsx! {
         LiveGatewayProvider {
-            div {
-                class: "mission-shell min-h-screen bg-[var(--app-bg)] text-[var(--ink-0)]",
-                "data-visual-shell": "mission-control",
-                div { class: "grid min-h-screen grid-cols-1 lg:grid-cols-[15.5rem_minmax(0,1fr)]",
-                    Sidebar {}
-                    LayoutContent {}
+            DashboardDataProvider {
+                AgentOverviewDataProvider {
+                    div {
+                        class: "mission-shell min-h-screen bg-[var(--app-bg)] text-[var(--ink-0)]",
+                        "data-visual-shell": "mission-control",
+                        div { class: "grid min-h-screen grid-cols-1 lg:grid-cols-[15.5rem_minmax(0,1fr)]",
+                            Sidebar {}
+                            LayoutContent {}
+                        }
+                    }
                 }
             }
         }
