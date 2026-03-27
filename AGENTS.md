@@ -177,6 +177,8 @@ Do not duplicate those instructions in this guide, and do not replace the skill 
 
 **Interact with memory only through the skill.** Read and follow [`skills/memory/SKILL.md`](skills/memory/SKILL.md) for every memory operation: trigger phrases, session-start and pre-task recall, show/recall, remember/reflect/maintain/promote, subagent spawns, curated master behavior, and optional model presets ([`skills/memory/ref/config.md`](skills/memory/ref/config.md)). **Do not** document or copy memory CLI invocations into this guide—procedure lives entirely in the skill and its `ref/` docs.
 
+**Per-tool model routing:** optional `hosts.cursor`, `hosts.claude`, and `hosts.codex` in `~/.agents/memory/memory-skill.config.json` map the same preset names to different real model ids per product. Set **`MEMORY_SKILL_HOST`** to `cursor`, `claude`, or `codex` in the environment for the session (or equivalent host wiring) so **config-hints** and orchestration pick the correct merge—see [`skills/memory/ref/config.md`](skills/memory/ref/config.md).
+
 **When the user asks about memories:** follow the skill’s `show` or `recall` action. No subagent needed for read-only inspection.
 
 **When storing or maintaining memories:** spawn a subagent that reads and follows the memory skill. Do not edit `MEMORY.md` or per-section memory files directly for routine writes.
