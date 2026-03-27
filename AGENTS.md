@@ -78,6 +78,8 @@ Important files and folders:
 - `assets/main.css`: app styling
 - `skills/github-admin/`: **Github Admin** skill — use [`skills/github-admin/SKILL.md`](skills/github-admin/SKILL.md) for all GitHub CLI automation (labels, milestones, project board, PRs, issues, releases)
 - `skills/project-management/`: **Project Management** skill — use [`skills/project-management/SKILL.md`](skills/project-management/SKILL.md) to synchronise GitHub Project board status and post issue comments at each workflow lifecycle checkpoint (`started`, `blocked`, `ready-for-merge`, `done`)
+- `skills/memory/`: **Memory** skill — use [`skills/memory/SKILL.md`](skills/memory/SKILL.md) to record and maintain agent memories and project facts
+- `MEMORY.md`: agent memory — episodic observations and curated project facts maintained by the [`memory` skill](skills/memory/SKILL.md)
 - `docs/`: requirements, design, and milestone planning
 - `development_setup.md`: local toolchain notes
 
@@ -170,6 +172,21 @@ cargo test
 **For task lifecycle transitions** (starting work, blocking, opening a PR, closing), **spawn a subagent** that reads and follows the **[`project-management` skill](skills/project-management/SKILL.md)**. Pass the event name (`started`, `blocked`, `ready-for-merge`, or `done`) together with the relevant context (issue number, branch, PR number, summary). Never call `set-issue-status` or `comment-issue` directly for lifecycle transitions — delegate to the skill subagent.
 
 Do not duplicate those instructions in this guide, and do not replace the skill with ad hoc `curl` or one-off scripts when the CLI covers the work.
+
+## Agent memory
+
+**Always read [`MEMORY.md`](MEMORY.md) at the start of every session** for accumulated project knowledge — episodic observations and curated facts that persist across conversations.
+
+**Spawn a subagent** that reads and follows the **[`memory` skill](skills/memory/SKILL.md)** whenever:
+
+- You learn something that would be useful in a future session (a lesson, workaround, decision, or surprise).
+- The user explicitly asks you to remember something.
+- A debugging session reveals a non-obvious root cause.
+- A design or preference decision is finalized.
+
+Pass `action: remember`, the `content` to record, and an optional `context` tag. The memory skill handles writing, pruning stale entries, extracting facts, and curating the fact list automatically.
+
+Do not edit `MEMORY.md` directly outside of the memory skill subagent.
 
 ## Run Commands
 
