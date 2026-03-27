@@ -1,7 +1,7 @@
 # update-issue
 
 ```bash
-node skills/github-admin/scripts/github-admin.mjs update-issue --number <n> [--title <title>] [--body <text>] [--body-file <path>] [--state <open|closed>] [--labels <a,b,c>] [--assignees <login,login>]
+node skills/github-admin/scripts/github-admin.mjs update-issue --number <n> [--title <title>] [--body <text>] [--body-file <path>] [--state <open|closed>] [--labels <a,b,c>] [--assignees <login,login>] [--milestone <n>]
 ```
 
 | Flag | Required | Notes |
@@ -13,3 +13,4 @@ node skills/github-admin/scripts/github-admin.mjs update-issue --number <n> [--t
 | `--state` | No | `open` or `closed` |
 | `--labels` | No | Comma-separated label names |
 | `--assignees` | No | Comma-separated assignees logins |
+| `--milestone` | No | Positive repository milestone number |

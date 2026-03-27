@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const DEFAULT_REPO = "fcarucci/daneel";
 const PROJECT_NUMBER = 1;
@@ -38,7 +39,7 @@ Commands:
   list-issues [--state <open|closed|all>] [--title-prefix <text>] [--title-contains <text>] [--limit <n>]
   list-tasks [--limit <n>]
   issue-comment --action <list|delete> (list: --issue <n>; delete: --comment-id <n>)
-  update-issue --number <n> [--title <title>] [--body <text>] [--body-file <path>] [--state <open|closed>] [--labels <a,b,c>] [--assignees <login,login>]
+  update-issue --number <n> [--title <title>] [--body <text>] [--body-file <path>] [--state <open|closed>] [--labels <a,b,c>] [--assignees <login,login>] [--milestone <n>]
   create-issue --title <title> [--body <text>] [--body-file <path>] [--labels <a,b,c>] [--milestone <n>] [--assignees <login,login>]
   create-project --title <title> [--private] [--dry-run]   (ProjectV2 owned by GITHUB_REPOSITORY owner; public by default)
   get-issue --number <n>
@@ -152,6 +153,13 @@ function parseArgs(argv) {
     }
   }
   return { command, options };
+}
+
+function parseCsvList(value) {
+  return String(value || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 async function rest(method, path, body) {
@@ -905,6 +913,10 @@ async function fetchAllNonPullRequestIssues() {
   return out;
 }
 
+function normalizeTitleFilter(value) {
+  return String(value).toLowerCase();
+}
+
 async function listIssues(options) {
   const raw = String(options.state || "all").toLowerCase();
   const titlePrefix = options["title-prefix"] || options.titlePrefix;
@@ -920,12 +932,12 @@ async function listIssues(options) {
     throw new Error("list-issues --state must be open, closed, or all.");
   }
   if (titlePrefix) {
-    const p = String(titlePrefix);
-    issues = issues.filter((issue) => issue.title.startsWith(p));
+    const normalizedPrefix = normalizeTitleFilter(titlePrefix);
+    issues = issues.filter((issue) => normalizeTitleFilter(issue.title).startsWith(normalizedPrefix));
   }
   if (titleContains) {
-    const c = String(titleContains);
-    issues = issues.filter((issue) => issue.title.includes(c));
+    const normalizedContains = normalizeTitleFilter(titleContains);
+    issues = issues.filter((issue) => normalizeTitleFilter(issue.title).includes(normalizedContains));
   }
 
   issues = issues.slice(0, limit);
@@ -1002,10 +1014,7 @@ async function labelIssue(options) {
   const action = String(options.action || "").toLowerCase();
 
   if (action === "add") {
-    const labels = String(options.labels || "")
-      .split(",")
-      .map((l) => l.trim())
-      .filter(Boolean);
+    const labels = parseCsvList(options.labels);
     if (labels.length === 0) {
       throw new Error("label-issue --action add requires --labels <a,b,...>.");
     }
@@ -1589,10 +1598,7 @@ async function createIssue(options) {
   };
 
   if (options.labels) {
-    payload.labels = String(options.labels)
-      .split(",")
-      .map((label) => label.trim())
-      .filter(Boolean);
+    payload.labels = parseCsvList(options.labels);
   }
 
   if (options.milestone) {
@@ -1604,10 +1610,7 @@ async function createIssue(options) {
   }
 
   if (options.assignees) {
-    payload.assignees = String(options.assignees)
-      .split(",")
-      .map((login) => login.trim())
-      .filter(Boolean);
+    payload.assignees = parseCsvList(options.assignees);
   }
 
   const issue = await rest("POST", `/repos/${owner}/${repo}/issues`, payload);
@@ -1648,21 +1651,22 @@ async function updateIssue(options) {
   }
   if (options.state) patch.state = options.state;
   if (options.labels) {
-    patch.labels = String(options.labels)
-      .split(",")
-      .map((label) => label.trim())
-      .filter(Boolean);
+    patch.labels = parseCsvList(options.labels);
   }
   if (options.assignees) {
-    patch.assignees = String(options.assignees)
-      .split(",")
-      .map((assignee) => assignee.trim())
-      .filter(Boolean);
+    patch.assignees = parseCsvList(options.assignees);
+  }
+  if (options.milestone !== undefined) {
+    const milestone = Number(options.milestone);
+    if (!Number.isInteger(milestone) || milestone <= 0) {
+      throw new Error("update-issue --milestone must be a positive integer (repo milestone number).");
+    }
+    patch.milestone = milestone;
   }
 
   if (Object.keys(patch).length === 0) {
     throw new Error(
-      "update-issue requires at least one of --title, --body, --body-file, --state, --labels, or --assignees.",
+      "update-issue requires at least one of --title, --body, --body-file, --state, --labels, --assignees, or --milestone.",
     );
   }
 
@@ -1682,7 +1686,6 @@ async function updateIssue(options) {
 }
 
 async function linkPrTask(options) {
-  const { owner, repo } = repoParts();
   const issueNumber = Number(options.issue);
   const pullNumber = Number(options.pr);
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
@@ -1692,16 +1695,11 @@ async function linkPrTask(options) {
     throw new Error("link-pr-task requires --pr <n>.");
   }
 
-  const pull = await getPullRequest(pullNumber);
-  const closingLine = options.close ? `\n\nCloses #${issueNumber}` : "";
-  const nextBody = `${pull.body || ""}${closingLine}`.trim();
-
-  await rest("PATCH", `/repos/${owner}/${repo}/pulls/${pullNumber}`, {
-    body: nextBody,
-  });
-  await rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
-    body: `Linked pull request: [#${pullNumber}](${pullUrl(pullNumber)})`,
-  });
+  const { patchedBody, postedComment } = await ensureIssueLinkedToPull(
+    issueNumber,
+    pullNumber,
+    false,
+  );
 
   console.log(
     JSON.stringify(
@@ -1715,6 +1713,8 @@ async function linkPrTask(options) {
           url: pullUrl(pullNumber),
         },
         closesIssue: Boolean(options.close),
+        patchedBody,
+        postedComment,
       },
       null,
       2,
@@ -1962,45 +1962,53 @@ async function project(options) {
   );
 }
 
-const { command, options } = parseArgs(process.argv.slice(2));
+async function main(argv = process.argv.slice(2)) {
+  const { command, options } = parseArgs(argv);
 
-if (!command || command === "help" || command === "--help") {
-  usage();
-  process.exit(command ? 0 : 1);
+  if (!command || command === "help" || command === "--help") {
+    usage();
+    process.exit(command ? 0 : 1);
+  }
+
+  const commands = {
+    "sync-labels": syncLabels,
+    "list-issues": () => listIssues(options),
+    "list-tasks": () => listTasks(options),
+    "issue-comment": () => issueComment(options),
+    "update-issue": () => updateIssue(options),
+    "get-issue": () => getIssueCmd(options),
+    "delete-issue": () => deleteIssueByNumber(options),
+    "label-issue": () => labelIssue(options),
+    "create-issue": () => createIssue(options),
+    "create-project": () => createProjectCommand(options),
+    "list-prs": () => listPrs(options),
+    "comment-issue": () => commentPr(options),
+    "comment-pr": () => commentPr(options),
+    "ensure-release": () => ensureRelease(options),
+    "upload-release-asset": () => uploadReleaseAsset(options),
+    "release-asset": () => releaseAsset(options),
+    "comment-pr-verification": () => commentPrVerification(options),
+    "pr-review": () => prReview(options),
+    "merge-pr": () => mergePr(options),
+    "create-pr": () => createPr(options),
+    "update-pr": () => updatePr(options),
+    "link-pr-task": () => linkPrTask(options),
+    "project": () => project(options),
+    "set-project-visibility": () => setProjectVisibility(options),
+    "set-issue-status": () => setIssueStatus(options),
+    report,
+  };
+
+  if (!commands[command]) {
+    usage();
+    throw new Error(`Unknown command: ${command}`);
+  }
+
+  await commands[command]();
 }
 
-const commands = {
-  "sync-labels": syncLabels,
-  "list-issues": () => listIssues(options),
-  "list-tasks": () => listTasks(options),
-  "issue-comment": () => issueComment(options),
-  "update-issue": () => updateIssue(options),
-  "get-issue": () => getIssueCmd(options),
-  "delete-issue": () => deleteIssueByNumber(options),
-  "label-issue": () => labelIssue(options),
-  "create-issue": () => createIssue(options),
-  "create-project": () => createProjectCommand(options),
-  "list-prs": () => listPrs(options),
-  "comment-issue": () => commentPr(options),
-  "comment-pr": () => commentPr(options),
-  "ensure-release": () => ensureRelease(options),
-  "upload-release-asset": () => uploadReleaseAsset(options),
-  "release-asset": () => releaseAsset(options),
-  "comment-pr-verification": () => commentPrVerification(options),
-  "pr-review": () => prReview(options),
-  "merge-pr": () => mergePr(options),
-  "create-pr": () => createPr(options),
-  "update-pr": () => updatePr(options),
-  "link-pr-task": () => linkPrTask(options),
-  "project": () => project(options),
-  "set-project-visibility": () => setProjectVisibility(options),
-  "set-issue-status": () => setIssueStatus(options),
-  report,
-};
-
-if (!commands[command]) {
-  usage();
-  throw new Error(`Unknown command: ${command}`);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
 }
 
-await commands[command]();
+export { linkPrTask, listIssues, main, parseArgs, updateIssue };
