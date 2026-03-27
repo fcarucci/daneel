@@ -14,7 +14,9 @@ Examples:
 
 - `task/T2_7`
 
-2. Set the GitHub task status to `In Progress`.
+2. Invoke the **[`project-management` skill](skills/project-management/SKILL.md)** with event **`started`** and the issue number for this task.
+
+   The skill sets the GitHub Project status to `In Progress` and posts a branch comment on the issue.  Read the skill before running commands.
 
 3. Implement the task on the feature branch.
 
@@ -71,9 +73,9 @@ Example:
 
 Open the **[`github-admin` skill](skills/github-admin/SKILL.md)** and follow **Pull requests (Daneel task workflow)** (and [references/commands/create-pr.md](skills/github-admin/references/commands/create-pr.md)) for the exact `create-pr` invocation, base branch, body, issue linking, and client approval-prefix guidance. Prefer that skill over copying ad hoc shell snippets into this document.
 
-11. Link the task to the merge request.
+11. Invoke the **[`project-management` skill](skills/project-management/SKILL.md)** with event **`ready-for-merge`** and the issue + PR numbers.
 
-12. Set the GitHub task status to `Ready for Merge`.
+    The skill sets the GitHub Project status to `Ready for Merge` and calls `link-pr-task` to add the closing keyword to the PR body and a linked-PR comment on the issue.
 
 13. Add relevant implementation notes to the merge request description.
 
@@ -120,5 +122,5 @@ A task is ready for review when:
 - automated tests pass
 - manual visual verification is complete when UI changed
 - branch is pushed
-- merge request is opened and linked to the task
-- GitHub task status is `Ready for Merge`
+- merge request is opened and linked to the task (via `project-management` skill, `ready-for-merge` event)
+- GitHub Project status is `Ready for Merge`

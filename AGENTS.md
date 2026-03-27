@@ -77,6 +77,7 @@ Important files and folders:
 - `src/pages/`: route-level page components
 - `assets/main.css`: app styling
 - `skills/github-admin/`: **Github Admin** skill — use [`skills/github-admin/SKILL.md`](skills/github-admin/SKILL.md) for all GitHub CLI automation (labels, milestones, project board, PRs, issues, releases); Cursor symlink: `.cursor/skills/github-admin`
+- `skills/project-management/`: **Project Management** skill — use [`skills/project-management/SKILL.md`](skills/project-management/SKILL.md) to synchronise GitHub Project board status and post issue comments at each workflow lifecycle checkpoint (`started`, `blocked`, `ready-for-merge`, `done`); Cursor symlink: `.cursor/skills/project-management`
 - `docs/`: requirements, design, and milestone planning
 - `development_setup.md`: local toolchain notes
 
@@ -165,6 +166,8 @@ cargo test
 ## GitHub administration
 
 **Prefer the [`github-admin` skill](skills/github-admin/SKILL.md)** (same content at `.cursor/skills/github-admin`) for any GitHub automation this repo already supports: labels, milestones, project board, issues, pull requests, releases, verification comments, and related maintenance. Read that skill before running commands; it holds invocation, auth, typical examples, PR conventions, approval-prefix guidance, and links to per-command reference files.
+
+**For task lifecycle transitions** (starting work, blocking, opening a PR, closing), use the **[`project-management` skill](skills/project-management/SKILL.md)** instead of calling `set-issue-status` and `comment-issue` by hand. The skill documents the exact command sequence for each event and delegates to `github-admin` for execution.
 
 Do not duplicate those instructions in this guide, and do not replace the skill with ad hoc `curl` or one-off scripts when the CLI covers the work.
 
