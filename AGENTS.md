@@ -76,8 +76,8 @@ Important files and folders:
 - `src/components/`: shared shell UI pieces
 - `src/pages/`: route-level page components
 - `assets/main.css`: app styling
-- `skills/github-admin/`: **Github Admin** skill — use [`skills/github-admin/SKILL.md`](skills/github-admin/SKILL.md) for all GitHub CLI automation (labels, milestones, project board, PRs, issues, releases); Cursor symlink: `.cursor/skills/github-admin`
-- `skills/project-management/`: **Project Management** skill — use [`skills/project-management/SKILL.md`](skills/project-management/SKILL.md) to synchronise GitHub Project board status and post issue comments at each workflow lifecycle checkpoint (`started`, `blocked`, `ready-for-merge`, `done`); Cursor symlink: `.cursor/skills/project-management`
+- `skills/github-admin/`: **Github Admin** skill — use [`skills/github-admin/SKILL.md`](skills/github-admin/SKILL.md) for all GitHub CLI automation (labels, milestones, project board, PRs, issues, releases)
+- `skills/project-management/`: **Project Management** skill — use [`skills/project-management/SKILL.md`](skills/project-management/SKILL.md) to synchronise GitHub Project board status and post issue comments at each workflow lifecycle checkpoint (`started`, `blocked`, `ready-for-merge`, `done`)
 - `docs/`: requirements, design, and milestone planning
 - `development_setup.md`: local toolchain notes
 
@@ -165,7 +165,7 @@ cargo test
 
 ## GitHub administration
 
-**Prefer the [`github-admin` skill](skills/github-admin/SKILL.md)** (same content at `.cursor/skills/github-admin`) for any GitHub automation this repo already supports: labels, milestones, project board, issues, pull requests, releases, verification comments, and related maintenance. Read that skill before running commands; it holds invocation, auth, typical examples, PR conventions, approval-prefix guidance, and links to per-command reference files.
+**Prefer the [`github-admin` skill](skills/github-admin/SKILL.md)** for any GitHub automation this repo already supports: labels, milestones, project board, issues, pull requests, releases, verification comments, and related maintenance. Read that skill before running commands; it holds invocation, auth, typical examples, PR conventions, approval-prefix guidance, and links to per-command reference files.
 
 **For task lifecycle transitions** (starting work, blocking, opening a PR, closing), **spawn a subagent** that reads and follows the **[`project-management` skill](skills/project-management/SKILL.md)**. Pass the event name (`started`, `blocked`, `ready-for-merge`, or `done`) together with the relevant context (issue number, branch, PR number, summary). Never call `set-issue-status` or `comment-issue` directly for lifecycle transitions — delegate to the skill subagent.
 

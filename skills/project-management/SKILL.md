@@ -23,9 +23,8 @@ The calling workflow provides the issue number and the event name.
 
 ## Prerequisites
 
-Read [`skills/github-admin/SKILL.md`](../github-admin/SKILL.md) (or its
-`.cursor` symlink) before running any commands.  Auth, repo defaults, and
-approval-prefix guidance live there.
+Read [`skills/github-admin/SKILL.md`](../github-admin/SKILL.md) before running any commands.
+Auth, repo defaults, and approval-prefix guidance live there.
 
 ## Step-by-step for each event
 
