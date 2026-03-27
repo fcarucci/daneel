@@ -36,7 +36,12 @@ approval-prefix guidance live there.
 node skills/github-admin/scripts/github-admin.mjs \
   set-issue-status --issues <ISSUE_NUMBER> --status "In Progress"
 
-# 2. Comment on the issue with the branch being worked on
+# 2. Remove blocked label if it was previously set
+node skills/github-admin/scripts/github-admin.mjs \
+  label-issue --action remove --number <ISSUE_NUMBER> --label blocked \
+  2>/dev/null || true
+
+# 3. Comment with the branch being worked on
 node skills/github-admin/scripts/github-admin.mjs \
   comment-issue --number <ISSUE_NUMBER> \
   --body "Work started on branch \`<BRANCH_NAME>\`."
@@ -49,7 +54,11 @@ node skills/github-admin/scripts/github-admin.mjs \
 node skills/github-admin/scripts/github-admin.mjs \
   set-issue-status --issues <ISSUE_NUMBER> --status "Blocked"
 
-# 2. Comment with the blocking reason
+# 2. Apply the blocked label
+node skills/github-admin/scripts/github-admin.mjs \
+  label-issue --action add --number <ISSUE_NUMBER> --labels blocked
+
+# 3. Comment with the blocking reason
 node skills/github-admin/scripts/github-admin.mjs \
   comment-issue --number <ISSUE_NUMBER> \
   --body "Blocked: <REASON>"
@@ -62,7 +71,12 @@ node skills/github-admin/scripts/github-admin.mjs \
 node skills/github-admin/scripts/github-admin.mjs \
   set-issue-status --issues <ISSUE_NUMBER> --status "Ready for Merge"
 
-# 2. Link PR to issue (adds closing keyword + issue comment)
+# 2. Remove blocked label if it was previously set
+node skills/github-admin/scripts/github-admin.mjs \
+  label-issue --action remove --number <ISSUE_NUMBER> --label blocked \
+  2>/dev/null || true
+
+# 3. Link PR to issue (adds closing keyword + issue comment)
 node skills/github-admin/scripts/github-admin.mjs \
   link-pr-task --pr <PR_NUMBER> --issue <ISSUE_NUMBER> --close
 ```

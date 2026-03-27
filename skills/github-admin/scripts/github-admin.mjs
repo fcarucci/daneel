@@ -42,6 +42,7 @@ Commands:
   create-issue --title <title> [--body <text>] [--body-file <path>] [--labels <a,b,c>] [--milestone <n>] [--assignees <login,login>]
   create-project --title <title> [--private] [--dry-run]   (ProjectV2 owned by GITHUB_REPOSITORY owner; public by default)
   delete-issue --number <n>
+  label-issue --action <add|remove> (add: --number <n> --labels <a,b>; remove: --number <n> --label <name>)
   list-prs [--state <open|closed|all>]   (default: open)
   comment-issue --number <n> --body <text>
   comment-pr --number <n> --body <text>   (alias: same as comment-issue; works for PRs)
@@ -963,6 +964,40 @@ async function deleteIssueByNumber(options) {
     { issue: issue.node_id },
   );
   console.log(JSON.stringify({ deleted: true, number }, null, 2));
+}
+
+async function labelIssue(options) {
+  const { owner, repo } = repoParts();
+  const number = Number(options.number);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("label-issue requires --number <n>.");
+  }
+  const action = String(options.action || "").toLowerCase();
+
+  if (action === "add") {
+    const labels = String(options.labels || "")
+      .split(",")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (labels.length === 0) {
+      throw new Error("label-issue --action add requires --labels <a,b,...>.");
+    }
+    const issue = await rest("POST", `/repos/${owner}/${repo}/issues/${number}/labels`, { labels });
+    console.log(JSON.stringify({ number, labels: issue.map((l) => l.name) }, null, 2));
+    return;
+  }
+
+  if (action === "remove") {
+    const label = String(options.label || "").trim();
+    if (!label) {
+      throw new Error("label-issue --action remove requires --label <name>.");
+    }
+    await rest("DELETE", `/repos/${owner}/${repo}/issues/${number}/labels/${encodeURIComponent(label)}`);
+    console.log(JSON.stringify({ number, removed: label }, null, 2));
+    return;
+  }
+
+  throw new Error("label-issue requires --action add (--labels <a,b>) or --action remove (--label <name>).");
 }
 
 function issueUrl(issueNumber) {
@@ -1908,6 +1943,7 @@ const commands = {
   "issue-comment": () => issueComment(options),
   "update-issue": () => updateIssue(options),
   "delete-issue": () => deleteIssueByNumber(options),
+  "label-issue": () => labelIssue(options),
   "create-issue": () => createIssue(options),
   "create-project": () => createProjectCommand(options),
   "list-prs": () => listPrs(options),

@@ -30,6 +30,7 @@ Commands with `--action` dispatching:
 | `create-pr` | [create-pr.md](references/commands/create-pr.md) |
 | `delete-issue` | [delete-issue.md](references/commands/delete-issue.md) |
 | `ensure-release` | [ensure-release.md](references/commands/ensure-release.md) |
+| `label-issue` | [label-issue.md](references/commands/label-issue.md) |
 | `link-pr-task` | [link-pr-task.md](references/commands/link-pr-task.md) |
 | `list-issues` | [list-issues.md](references/commands/list-issues.md) |
 | `list-prs` | [list-prs.md](references/commands/list-prs.md) |
