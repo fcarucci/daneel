@@ -24,18 +24,18 @@ Load plan, review critically, execute all tasks, report when complete.
 ### Step 2: Signal work start (project management)
 
 Before touching any code, check whether `skills/project-management/SKILL.md` exists.
-If it does, gather any available context: issue number, branch name, PR number.
+If it does, collect whatever task context is available from the plan and the current workspace.
 
 Spawn a subagent with the available context and instruct it to read and follow `skills/project-management/SKILL.md` with event **`started`**:
 
 ```
 Event:  started
-Issue:  <ISSUE_NUMBER_if_known>
-Branch: <BRANCH_NAME_if_known>
+Task:   <task-id-or-name-from-plan>
+Branch: <current-branch-name>
 ```
 
-The subagent sets the project status to `In Progress` and posts a branch comment.
-Skip any field that is not yet known — the skill handles missing context gracefully.
+The subagent is responsible for finding any associated work item and updating its status.
+Omit fields that are not yet known — the skill handles missing context gracefully.
 If the skill file is absent, skip this step entirely.
 
 ### Step 3: Execute Tasks
@@ -57,7 +57,7 @@ After all tasks complete and verified:
 ### Step 5: Signal work complete (project management)
 
 After the PR is opened, check whether `skills/project-management/SKILL.md` exists.
-If it does, gather any available context: issue number, PR number, branch name.
+If it does, collect whatever context is available from the completed work.
 
 Compose a brief implementation summary covering what changed, how it was tested, and any known limitations or follow-up items.
 
@@ -65,13 +65,14 @@ Spawn a subagent with the available context and instruct it to read and follow `
 
 ```
 Event:   ready-for-merge
-Issue:   <ISSUE_NUMBER_if_known>
-PR:      <PR_NUMBER_if_known>
+Task:    <task-id-or-name-from-plan>
+Branch:  <branch-name>
+PR:      <pr-number-if-known>
 Summary: <IMPLEMENTATION_SUMMARY>
 ```
 
-The subagent sets the project status to `Ready for Merge`, links the PR to the issue, and posts the summary as a comment.
-Skip any field that is not yet known — the skill handles missing context gracefully.
+The subagent is responsible for finding any associated work item, updating its status, and posting the summary.
+Omit fields that are not yet known — the skill handles missing context gracefully.
 If the skill file is absent, skip this step entirely.
 
 ## When to Stop and Ask for Help
@@ -106,4 +107,4 @@ If the skill file is absent, skip this step entirely.
 - **`using-git-worktrees`** - REQUIRED: Set up an isolated workspace before starting
 - **`writing-plans`** - Creates the plan this skill executes
 - **`finishing-a-development-branch`** - Complete development after all tasks
-- **`project-management`** - Optional: invoked at start (Step 2) and completion (Step 5) when an issue number is known
+- **`project-management`** - Optional: invoked at start (Step 2) and completion (Step 5) with task context

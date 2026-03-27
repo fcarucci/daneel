@@ -20,7 +20,7 @@ Examples:
 
    ```
    Event:  started
-   Issue:  <ISSUE_NUMBER>
+   Task:   <task-tag-or-title>
    Branch: <BRANCH_NAME>
    ```
 
@@ -87,7 +87,7 @@ Open the **[`github-admin` skill](skills/github-admin/SKILL.md)** and follow **P
 
     ```
     Event:   ready-for-merge
-    Issue:   <ISSUE_NUMBER>
+    Task:    <task-tag-or-title>
     PR:      <PR_NUMBER>
     Summary: <one paragraph: what changed, how tested, known limitations>
     ```

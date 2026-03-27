@@ -1,41 +1,58 @@
 ---
 name: project-management
 description: >
-  Synchronises GitHub Project status and issue comments whenever a task or issue
-  transitions lifecycle state (started, blocked, ready-for-merge, done).
-  Use when the workflow reaches a status-transition checkpoint: starting a branch,
-  opening a PR, merging, or blocking work.  Depends on the github-admin skill.
+  Updates project tracking whenever a task transitions lifecycle state
+  (started, blocked, ready-for-merge, done). Receives task context from the
+  calling workflow, resolves the associated work item if one exists, then
+  updates its status and posts a comment. Exits gracefully when no work item
+  is found. Depends on the github-admin skill for GitHub operations.
 ---
 
 # Project Management
 
 ## When to invoke
 
-Use this skill **as a subagent** at each lifecycle checkpoint listed below.
-The calling workflow provides the issue number and the event name.
+Use this skill **as a subagent** at each lifecycle checkpoint.
+The calling workflow passes task context and an event name — this skill
+resolves the work item and acts on it.
 
 | Checkpoint in workflow | Event |
 |------------------------|-------|
 | Branch created, work begins | `started` |
 | Work is blocked by an external dependency | `blocked` |
 | PR opened and all verification passes | `ready-for-merge` |
-| PR merged or issue closed | `done` |
+| PR merged or task closed | `done` |
 
-## Prerequisites
+## Step 1: Resolve task to a work item
 
-Read [`skills/github-admin/SKILL.md`](../github-admin/SKILL.md) before running any commands.
-Auth, repo defaults, and approval-prefix guidance live there.
+Before doing anything else, determine the issue number from the context provided.
 
-## Step-by-step for each event
+**If an issue number was given directly** — use it.
+
+**Otherwise, search by task ID or name:**
+
+```bash
+node skills/github-admin/scripts/github-admin.mjs \
+  list-issues --title-contains "<TASK_ID_OR_NAME>" --state open
+```
+
+Pick the issue whose title best matches the task. If no match is found,
+**exit gracefully** — log "No work item found for task <TASK>; skipping
+project management." and stop. Do not error.
+
+Read [`skills/github-admin/SKILL.md`](../github-admin/SKILL.md) for auth
+and configuration before running any commands.
+
+## Step 2: Act on the event
 
 ### `started` — work begins
 
 ```bash
-# 1. Set project board status
+# 1. Set project status
 node skills/github-admin/scripts/github-admin.mjs \
   set-issue-status --issues <ISSUE_NUMBER> --status "In Progress"
 
-# 2. Remove blocked label if it was previously set
+# 2. Remove blocked label if previously set (safe to fail)
 node skills/github-admin/scripts/github-admin.mjs \
   label-issue --action remove --number <ISSUE_NUMBER> --label blocked \
   2>/dev/null || true
@@ -49,7 +66,7 @@ node skills/github-admin/scripts/github-admin.mjs \
 ### `blocked` — work cannot proceed
 
 ```bash
-# 1. Set project board status
+# 1. Set project status
 node skills/github-admin/scripts/github-admin.mjs \
   set-issue-status --issues <ISSUE_NUMBER> --status "Blocked"
 
@@ -66,24 +83,28 @@ node skills/github-admin/scripts/github-admin.mjs \
 ### `ready-for-merge` — PR is open, work is complete
 
 ```bash
-# 1. Set project board status
+# 1. Set project status
 node skills/github-admin/scripts/github-admin.mjs \
   set-issue-status --issues <ISSUE_NUMBER> --status "Ready for Merge"
 
-# 2. Remove blocked label if it was previously set
+# 2. Remove blocked label if previously set (safe to fail)
 node skills/github-admin/scripts/github-admin.mjs \
   label-issue --action remove --number <ISSUE_NUMBER> --label blocked \
   2>/dev/null || true
 
-# 3. Link PR to issue (adds closing keyword + issue comment)
+# 3. Link PR to issue (adds closing keyword + comment)
 node skills/github-admin/scripts/github-admin.mjs \
   link-pr-task --pr <PR_NUMBER> --issue <ISSUE_NUMBER> --close
+
+# 4. Post implementation summary as an issue comment
+node skills/github-admin/scripts/github-admin.mjs \
+  comment-issue --number <ISSUE_NUMBER> --body "<SUMMARY>"
 ```
 
-### `done` — PR merged or issue closed manually
+### `done` — PR merged or task closed manually
 
 ```bash
-# 1. Set project board status
+# 1. Set project status
 node skills/github-admin/scripts/github-admin.mjs \
   set-issue-status --issues <ISSUE_NUMBER> --status "Done"
 
@@ -92,21 +113,10 @@ node skills/github-admin/scripts/github-admin.mjs \
   update-issue --number <ISSUE_NUMBER> --state closed
 ```
 
-## Lookup: find the issue number
-
-If the issue number is not already known, use:
-
-```bash
-node skills/github-admin/scripts/github-admin.mjs \
-  list-issues --title-contains "<task-id-or-keyword>" --state open
-```
-
 ## Error handling
 
-- If `set-issue-status` throws "item not found in project", the issue has not
-  been added to the configured Project Board.  Add it via the GitHub UI or skip
-  the status step and only post the comment.
-- If the issue is already in the target status, the command is idempotent and
-  exits cleanly — no action needed.
-- Never skip the comment step; it provides a human-readable audit trail even
-  when the board status is already correct.
+- **No work item found** — exit gracefully with a log message; never error.
+- **Item not in project board** — skip `set-issue-status`; still post the comment.
+- **Status already correct** — `set-issue-status` is idempotent; no action needed.
+- **Label not present on remove** — suppress the error (`2>/dev/null || true`).
+- **Never skip the comment step** — it provides an audit trail even when board status is unchanged.
