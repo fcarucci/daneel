@@ -166,6 +166,8 @@ Commands:
   create-pr --head <branch> --title <title> [--base <branch>] [--body <text>] [--issue <n>] [--draft]
   update-pr --number <n> [--title <title>] [--body <text>] [--base <branch>] [--state <open|closed>]
   link-pr-task --pr <n> --issue <n> [--close]
+  link-poc-prs [--dry-run]
+  close-poc-project [--dry-run]
   set-project-status-workflow
   set-issue-status --issues <n,n,...> --status <status>
   repair-t0-numbering
@@ -320,6 +322,272 @@ async function allIssues(state = "all") {
 async function allPulls(state = "open") {
   const { owner, repo } = repoParts();
   return rest("GET", `/repos/${owner}/${repo}/pulls?state=${state}&per_page=100`);
+}
+
+async function allPullRequests() {
+  const { owner, repo } = repoParts();
+  const out = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const batch = await rest(
+      "GET",
+      `/repos/${owner}/${repo}/pulls?state=all&per_page=100&page=${page}`,
+    );
+    if (!batch.length) {
+      break;
+    }
+    out.push(...batch);
+    if (batch.length < 100) {
+      break;
+    }
+  }
+  return out;
+}
+
+function pocTaskIdFromIssueTitle(title) {
+  const match = title.match(/\[POC V1\]\s*(T\d+\.\d+)\b/);
+  return match ? match[1] : null;
+}
+
+function pocTaskIdFromPullTitle(title) {
+  const match = title.match(/\b(T\d+\.\d+)\b/);
+  return match ? match[1] : null;
+}
+
+function extractClosingIssueRefsFromText(text) {
+  if (!text) {
+    return [];
+  }
+  const refs = new Set();
+  const re = /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*#(\d+)/gi;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    refs.add(Number(match[1]));
+  }
+  return [...refs];
+}
+
+function buildPocIssueToPullMap(issues, pulls) {
+  const issueByNum = new Map(issues.map((issue) => [issue.number, issue]));
+  const byIssue = new Map();
+
+  function addCandidate(issueNumber, pullNumber, score, reason) {
+    let inner = byIssue.get(issueNumber);
+    if (!inner) {
+      inner = new Map();
+      byIssue.set(issueNumber, inner);
+    }
+    const prev = inner.get(pullNumber);
+    if (!prev || score > prev.score) {
+      inner.set(pullNumber, { pr: pullNumber, score, reason });
+    }
+  }
+
+  for (const pr of pulls) {
+    const combined = `${pr.title || ""}\n${pr.body || ""}`;
+    for (const num of extractClosingIssueRefsFromText(combined)) {
+      if (!issueByNum.has(num)) {
+        continue;
+      }
+      addCandidate(num, pr.number, 10, "closing-keyword");
+    }
+
+    const prTask = pocTaskIdFromPullTitle(pr.title || "");
+    if (prTask) {
+      for (const iss of issues) {
+        const issueTask = pocTaskIdFromIssueTitle(iss.title);
+        if (issueTask === prTask) {
+          addCandidate(iss.number, pr.number, 8, "task-id");
+        }
+      }
+    }
+  }
+
+  const result = new Map();
+  for (const iss of issues) {
+    const inner = byIssue.get(iss.number);
+    if (!inner?.size) {
+      continue;
+    }
+    const candidates = [...inner.values()];
+    candidates.sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return b.pr - a.pr;
+    });
+    result.set(iss.number, candidates[0]);
+  }
+  return result;
+}
+
+function pullBodyClosesIssue(body, issueNumber) {
+  return new RegExp(`(?:close|fix|resolve)[sd]?\\s*:?\\s*#${issueNumber}\\b`, "i").test(
+    body || "",
+  );
+}
+
+function issueHasLinkedPullComment(comments, pullNumber) {
+  const re = new RegExp(`Linked pull request:\\s*\\[#${pullNumber}\\]`, "i");
+  return comments.some((comment) => re.test(comment.body || ""));
+}
+
+async function ensureIssueLinkedToPull(issueNumber, pullNumber, dryRun) {
+  const { owner, repo } = repoParts();
+  const pull = await getPullRequest(pullNumber);
+  const comments = await rest(
+    "GET",
+    `/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100`,
+  );
+
+  let patchedBody = false;
+  let postedComment = false;
+
+  if (!pullBodyClosesIssue(pull.body, issueNumber)) {
+    patchedBody = true;
+    if (!dryRun) {
+      const nextBody = `${pull.body || ""}\n\nCloses #${issueNumber}`.trim();
+      await rest("PATCH", `/repos/${owner}/${repo}/pulls/${pullNumber}`, {
+        body: nextBody,
+      });
+    }
+  }
+
+  if (!issueHasLinkedPullComment(comments, pullNumber)) {
+    postedComment = true;
+    if (!dryRun) {
+      await rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+        body: `Linked pull request: [#${pullNumber}](${pullUrl(pullNumber)})`,
+      });
+    }
+  }
+
+  return { patchedBody, postedComment };
+}
+
+async function linkPocPrs(options) {
+  const dryRun = Boolean(options["dry-run"]);
+  const issues = (await allIssues()).filter(
+    (issue) => !issue.pull_request && issue.title.startsWith("[POC V1] "),
+  );
+  const pulls = await allPullRequests();
+  const map = buildPocIssueToPullMap(issues, pulls);
+
+  const linked = [];
+  const alreadyLinked = [];
+  const unmapped = [];
+
+  for (const issue of issues.sort((a, b) => a.number - b.number)) {
+    const pick = map.get(issue.number);
+    if (!pick) {
+      unmapped.push({
+        number: issue.number,
+        title: issue.title,
+      });
+      continue;
+    }
+
+    const actions = await ensureIssueLinkedToPull(issue.number, pick.pr, dryRun);
+    if (!actions.patchedBody && !actions.postedComment) {
+      alreadyLinked.push({
+        issue: issue.number,
+        pull: pick.pr,
+        reason: pick.reason,
+      });
+      continue;
+    }
+
+    linked.push({
+      issue: issue.number,
+      pull: pick.pr,
+      reason: pick.reason,
+      patchedPullBody: actions.patchedBody,
+      postedIssueComment: actions.postedComment,
+      dryRun,
+    });
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        dryRun,
+        mappedIssueCount: map.size,
+        pocIssueCount: issues.length,
+        linked,
+        alreadyLinked,
+        unmapped,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function closePocProject(options) {
+  const dryRun = Boolean(options["dry-run"]);
+  const data = await projectData();
+  const project = data.user.projectV2;
+  if (!project) {
+    throw new Error(`No project found for user login and number ${projectNumber()}.`);
+  }
+
+  if (project.closed) {
+    console.log(
+      JSON.stringify(
+        {
+          message: "Project is already closed.",
+          number: projectNumber(),
+          title: project.title,
+          closed: project.closed,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  if (dryRun) {
+    console.log(
+      JSON.stringify(
+        {
+          dryRun: true,
+          number: projectNumber(),
+          title: project.title,
+          wouldSetClosed: true,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  const updated = await graphql(
+    `
+    mutation($projectId: ID!) {
+      updateProjectV2(input: { projectId: $projectId, closed: true }) {
+        projectV2 {
+          id
+          title
+          closed
+        }
+      }
+    }
+    `,
+    { projectId: project.id },
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        message: "Project closed.",
+        number: projectNumber(),
+        project: updated.updateProjectV2.projectV2,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 async function allReleases() {
@@ -651,6 +919,7 @@ async function projectData() {
         projectV2(number:$number) {
           id
           title
+          closed
           fields(first:50) {
             nodes {
               ... on ProjectV2FieldCommon {
@@ -1999,6 +2268,8 @@ const commands = {
   "create-pr": () => createPr(options),
   "update-pr": () => updatePr(options),
   "link-pr-task": () => linkPrTask(options),
+  "link-poc-prs": () => linkPocPrs(options),
+  "close-poc-project": () => closePocProject(options),
   "set-project-status-workflow": setProjectStatusWorkflow,
   "set-issue-status": () => setIssueStatus(options),
   "repair-t0-numbering": repairT0Numbering,
