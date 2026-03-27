@@ -194,6 +194,8 @@ or `recall` action. No subagent needed for read-only inspection.
 
 **When storing or maintaining memories:** spawn a subagent that reads and follows the memory skill. Do not edit `MEMORY.md` directly.
 
+**Subagent model selection:** optional `~/.agents/memory/memory-skill.config.json` defines which model preset to use per memory action (`remember`, `reflect`, `maintain`, `promote`). Before spawning a memory subagent, run `python3 skills/memory/scripts/memory-manage.py config-hints` and use the resolved `model_id` for that action unless the subagent payload includes an explicit `model_preset`. See `skills/memory/ref/config.md`.
+
 ## Run Commands
 
 Preferred day-to-day command:
