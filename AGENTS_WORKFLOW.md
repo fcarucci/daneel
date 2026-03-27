@@ -14,7 +14,17 @@ Examples:
 
 - `task/T2_7`
 
-2. Set the GitHub task status to `In Progress`.
+2. **Spawn a subagent** to run the **[`project-management` skill](skills/project-management/SKILL.md)** with event **`started`**.
+
+   Pass this context to the subagent:
+
+   ```
+   Event:  started
+   Task:   <task-tag-or-title>
+   Branch: <BRANCH_NAME>
+   ```
+
+   The subagent reads `skills/project-management/SKILL.md`, sets the GitHub Project status to `In Progress`, and posts a branch comment on the issue.
 
 3. Implement the task on the feature branch.
 
@@ -69,23 +79,20 @@ Example:
 [T2.7] Make agent recency and heartbeat state update live
 ```
 
-Use the GitHub admin script directly for PR creation:
+Open the **[`github-admin` skill](skills/github-admin/SKILL.md)** and follow **Pull requests (Daneel task workflow)** (and [references/commands/create-pr.md](skills/github-admin/references/commands/create-pr.md)) for the exact `create-pr` invocation, base branch, body, issue linking, and client approval-prefix guidance. Prefer that skill over copying ad hoc shell snippets into this document.
 
-```bash
-node scripts/github-admin.mjs create-pr --head <branch> --base main --title "[<Task tag>] Title" --issue <n> --body "<markdown>"
-```
+11. **Spawn a subagent** to run the **[`project-management` skill](skills/project-management/SKILL.md)** with event **`ready-for-merge`**.
 
-Do not route this through an npm wrapper. In this repo the direct `node scripts/github-admin.mjs ...` command is the intended shortcut and should be preferred to avoid repeated approval prompts.
+    Pass this context to the subagent:
 
-For approval hygiene, prefer approving this single reusable prefix once:
+    ```
+    Event:   ready-for-merge
+    Task:    <task-tag-or-title>
+    PR:      <PR_NUMBER>
+    Summary: <one paragraph: what changed, how tested, known limitations>
+    ```
 
-```text
-node scripts/github-admin.mjs create-pr
-```
-
-11. Link the task to the merge request.
-
-12. Set the GitHub task status to `Ready for Merge`.
+    The subagent reads `skills/project-management/SKILL.md`, sets the GitHub Project status to `Ready for Merge`, links the PR to the issue, and posts the summary as a comment on the issue.
 
 13. Add relevant implementation notes to the merge request description.
 
@@ -132,5 +139,5 @@ A task is ready for review when:
 - automated tests pass
 - manual visual verification is complete when UI changed
 - branch is pushed
-- merge request is opened and linked to the task
-- GitHub task status is `Ready for Merge`
+- merge request is opened and linked to the task (via `project-management` skill, `ready-for-merge` event)
+- GitHub Project status is `Ready for Merge`

@@ -76,7 +76,8 @@ Important files and folders:
 - `src/components/`: shared shell UI pieces
 - `src/pages/`: route-level page components
 - `assets/main.css`: app styling
-- `scripts/github-admin.mjs`: GitHub labels, milestones, assignments, and project admin helper
+- `skills/github-admin/`: **Github Admin** skill — use [`skills/github-admin/SKILL.md`](skills/github-admin/SKILL.md) for all GitHub CLI automation (labels, milestones, project board, PRs, issues, releases)
+- `skills/project-management/`: **Project Management** skill — use [`skills/project-management/SKILL.md`](skills/project-management/SKILL.md) to synchronise GitHub Project board status and post issue comments at each workflow lifecycle checkpoint (`started`, `blocked`, `ready-for-merge`, `done`)
 - `docs/`: requirements, design, and milestone planning
 - `development_setup.md`: local toolchain notes
 
@@ -162,58 +163,13 @@ Run the Rust test suite:
 cargo test
 ```
 
-## GitHub Administration
+## GitHub administration
 
-Use the dedicated repo admin script for GitHub maintenance instead of ad hoc shell snippets:
+**Prefer the [`github-admin` skill](skills/github-admin/SKILL.md)** for any GitHub automation this repo already supports: labels, milestones, project board, issues, pull requests, releases, verification comments, and related maintenance. Read that skill before running commands; it holds invocation, auth, typical examples, PR conventions, approval-prefix guidance, and links to per-command reference files.
 
-```bash
-node scripts/github-admin.mjs help
-```
+**For task lifecycle transitions** (starting work, blocking, opening a PR, closing), **spawn a subagent** that reads and follows the **[`project-management` skill](skills/project-management/SKILL.md)**. Pass the event name (`started`, `blocked`, `ready-for-merge`, or `done`) together with the relevant context (issue number, branch, PR number, summary). Never call `set-issue-status` or `comment-issue` directly for lifecycle transitions — delegate to the skill subagent.
 
-The script reads auth from:
-
-- `GITHUB_TOKEN`
-- `GITHUB_PERSONAL_ACCESS_TOKEN`
-- `~/.env` as a fallback for `GITHUB_PERSONAL_ACCESS_TOKEN`
-
-Typical commands:
-
-```bash
-node scripts/github-admin.mjs sync-labels
-node scripts/github-admin.mjs remap-poc-milestones
-node scripts/github-admin.mjs set-project-status-workflow
-node scripts/github-admin.mjs assign-poc --assignee fcarucci
-node scripts/github-admin.mjs close-implemented --commit 062d615
-node scripts/github-admin.mjs report
-```
-
-There is also an npm alias:
-
-```bash
-npm run github:admin -- help
-```
-
-For pull request creation, use the existing GitHub admin script directly:
-
-```bash
-node scripts/github-admin.mjs create-pr --head <branch> --base main --title "[<Task tag>] Title" --issue <n> --body "<markdown>"
-```
-
-Prefer the direct `node scripts/github-admin.mjs ...` form over npm wrappers for GitHub operations. In this environment that direct node command is the stable approved path and should be used to avoid unnecessary approval friction.
-
-For Codex approval hygiene, prefer the narrow reusable command prefix:
-
-```text
-node scripts/github-admin.mjs
-```
-
-That keeps future GitHub admin actions under a single predictable command instead of repeated approvals for generic scripting commands.
-
-For PR creation specifically, approve this reusable prefix once if your client supports persistent approvals:
-
-```text
-node scripts/github-admin.mjs create-pr
-```
+Do not duplicate those instructions in this guide, and do not replace the skill with ad hoc `curl` or one-off scripts when the CLI covers the work.
 
 ## Run Commands
 

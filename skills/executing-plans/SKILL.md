@@ -21,21 +21,59 @@ Load plan, review critically, execute all tasks, report when complete.
 3. If concerns: Raise them with your human partner before starting
 4. If no concerns: Create a task tracker and proceed
 
-### Step 2: Execute Tasks
+### Step 2: Signal work start (project management)
+
+Before touching any code, check whether `skills/project-management/SKILL.md` exists.
+If it does, collect whatever task context is available from the plan and the current workspace.
+
+Spawn a subagent with the available context and instruct it to read and follow `skills/project-management/SKILL.md` with event **`started`**:
+
+```
+Event:  started
+Task:   <task-id-or-name-from-plan>
+Branch: <current-branch-name>
+```
+
+The subagent is responsible for finding any associated work item and updating its status.
+Omit fields that are not yet known — the skill handles missing context gracefully.
+If the skill file is absent, skip this step entirely.
+
+### Step 3: Execute Tasks
 
 For each task:
 1. Mark as in_progress
 2. Follow each step exactly (plan has bite-sized steps)
 3. Run verifications as specified
-4. **End-of-implementation refactoring (mandatory):** run the `refactoring` skill on all files you changed for this task (features **and** bug fixes), then rerun the plan’s fast checks. Do this **proactively**—do not wait for the user to say “refactor.” Ad-hoc tidying while coding does not count.
+4. **End-of-implementation refactoring (mandatory):** run the `refactoring` skill on all files you changed for this task (features **and** bug fixes), then rerun the plan's fast checks. Do this **proactively**—do not wait for the user to say "refactor." Ad-hoc tidying while coding does not count.
 5. Mark as completed
 
-### Step 3: Complete Development
+### Step 4: Complete Development
 
 After all tasks complete and verified:
 - Announce: "I'm using the finishing-a-development-branch skill to complete this work."
 - **REQUIRED SUB-SKILL:** Use `finishing-a-development-branch`
 - Follow that skill to verify tests, present options, execute choice
+
+### Step 5: Signal work complete (project management)
+
+After the PR is opened, check whether `skills/project-management/SKILL.md` exists.
+If it does, collect whatever context is available from the completed work.
+
+Compose a brief implementation summary covering what changed, how it was tested, and any known limitations or follow-up items.
+
+Spawn a subagent with the available context and instruct it to read and follow `skills/project-management/SKILL.md` with event **`ready-for-merge`**:
+
+```
+Event:   ready-for-merge
+Task:    <task-id-or-name-from-plan>
+Branch:  <branch-name>
+PR:      <pr-number-if-known>
+Summary: <IMPLEMENTATION_SUMMARY>
+```
+
+The subagent is responsible for finding any associated work item, updating its status, and posting the summary.
+Omit fields that are not yet known — the skill handles missing context gracefully.
+If the skill file is absent, skip this step entirely.
 
 ## When to Stop and Ask for Help
 
@@ -69,3 +107,4 @@ After all tasks complete and verified:
 - **`using-git-worktrees`** - REQUIRED: Set up an isolated workspace before starting
 - **`writing-plans`** - Creates the plan this skill executes
 - **`finishing-a-development-branch`** - Complete development after all tasks
+- **`project-management`** - Optional: invoked at start (Step 2) and completion (Step 5) with task context

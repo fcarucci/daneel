@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const DEFAULT_REPO = "fcarucci/daneel";
 const PROJECT_NUMBER = 1;
@@ -28,151 +29,37 @@ const LABEL_DEFS = {
   enhancement: { color: "a2eeef", description: "New feature or improvement" },
 };
 
-const OLD_MILESTONE_TITLES = [
-  "P0 Foundation Decisions",
-  "P1 App Bootstrap",
-  "P2 Server Function Backbone",
-  "P3 OpenClaw Adapter Minimum Slice",
-  "P4 Graph Assembly Service",
-  "P5 Vertical UI Slice",
-  "P6 Error Handling And Polish",
-  "P7 End-To-End Proof",
-];
-
-const POC_MILESTONES = [
-  {
-    title: "POC V1 Foundation",
-    description:
-      "Core product framing, app bootstrap, and first end-to-end gateway/server-function connectivity. Covers the baseline shell, styling system, shared models, and the initial OpenClaw connection path.",
-  },
-  {
-    title: "POC V1 Graph Backbone",
-    description:
-      "Data-layer work for turning OpenClaw state into graph-ready application data. Covers adapter slices, bindings, active sessions, relationship hints, graph semantics, and graph snapshot assembly.",
-  },
-  {
-    title: "POC V1 Operator Experience",
-    description:
-      "UI completion, graph presentation, error handling, polish, and POC validation. Covers the dashboard and agents surface, visual graph work, refresh flows, smoke tests, and demo readiness.",
-  },
-];
-
-const PHASE_PRIORITY = {
-  "Foundation Decisions": "priority/p0",
-  "App Bootstrap": "priority/p0",
-  "Server Function Backbone": "priority/p0",
-  "OpenClaw Adapter Minimum Slice": "priority/p0",
-  "Graph Assembly Service": "priority/p1",
-  "Vertical UI Slice": "priority/p1",
-  "Error Handling And Polish": "priority/p2",
-  "End-To-End Proof": "priority/p2",
-};
-
-const PHASE_MILESTONE = {
-  "Foundation Decisions": "POC V1 Foundation",
-  "App Bootstrap": "POC V1 Foundation",
-  "Server Function Backbone": "POC V1 Foundation",
-  "OpenClaw Adapter Minimum Slice": "POC V1 Graph Backbone",
-  "Graph Assembly Service": "POC V1 Graph Backbone",
-  "Vertical UI Slice": "POC V1 Operator Experience",
-  "Error Handling And Polish": "POC V1 Operator Experience",
-  "End-To-End Proof": "POC V1 Operator Experience",
-};
-
-const IMPLEMENTED_ISSUES = {
-  5: {
-    title: "T1.1 Create the Rust/Dioxus application skeleton",
-    body:
-      "the runnable Rust/Dioxus application skeleton\n- the crate manifest and Dioxus app metadata\n- `src/main.rs` app entrypoint\n- the initial router shell used by the app",
-  },
-  6: {
-    title: "T1.2 Add the base route structure",
-    body:
-      "typed routes for `/`, `/agents`, and `/settings`\n- a shared application layout\n- persistent sidebar navigation and top bar\n- a safe not-found route",
-  },
-  7: {
-    title: "T1.3 Add design tokens and global styling",
-    body:
-      "the Tailwind 4 styling pipeline\n- shared design tokens and custom mission-control styling\n- panel, typography, spacing, border, and surface treatments\n- the generated application stylesheet served through Dioxus",
-  },
-  9: {
-    title: "T2.1 Add the first live gateway connectivity slice",
-    body:
-      "the first live Dioxus server-backed gateway slice\n- a server-side loopback WebSocket connection to the OpenClaw Gateway\n- a small typed gateway status payload rendered in the UI\n- degraded/error handling when config or connectivity fails",
-  },
-  12: {
-    title: "T2.4 Add the first Dioxus server function",
-    body:
-      "the first Dioxus server function, `get_gateway_status()`\n- dashboard-side resource loading for that server function\n- user-visible loading, healthy, and degraded rendering states",
-  },
-  15: {
-    title: "T3.2 Implement gateway configuration loading",
-    body:
-      "gateway config loading from `~/.openclaw/openclaw.json`\n- parsing of `gateway.port`\n- parsing of `gateway.auth.token`\n- actionable degraded states when config is missing or invalid",
-  },
-  16: {
-    title: "T3.3 Implement `gateway_status()`",
-    body:
-      "a gateway health/status call over the documented WebSocket path\n- mapping into the shared `GatewayStatusSnapshot` model\n- healthy vs degraded UI presentation on the dashboard and status pill",
-  },
-  24: {
-    title: "T5.1 Build the dashboard shell",
-    body:
-      "the dashboard route shell\n- the hero status area\n- the gateway status card\n- adjacent dashboard panels that reserve space for the graph-focused surface\n- loading/error/success states around the gateway-backed summary area",
-  },
-};
-
-const T0_IMPLEMENTED_ISSUES = {
-  1: {
-    comment:
-      "the Phase 0 foundation note in `docs/milestones/proof-of-concept-1/t0_foundation_decisions.md`\n- explicit node, edge, status, and provenance semantics for the POC graph\n- clear guidance on what the UI may and may not claim from the underlying data",
-  },
-  2: {
-    comment:
-      "the Phase 0 foundation note in `docs/milestones/proof-of-concept-1/t0_foundation_decisions.md`\n- the minimal `GatewayAdapter` capability contract for the first slice\n- the initial shared model surface the adapter should stabilize for later implementation work",
-  },
-  4: {
-    comment:
-      "the Phase 0 foundation note in `docs/milestones/proof-of-concept-1/t0_foundation_decisions.md`\n- the deterministic SVG rendering decision for POC V1\n- layout and verification constraints that keep the first graph slice stable and testable",
-  },
-};
 
 function usage() {
   console.log(`Usage:
-  node scripts/github-admin.mjs <command> [options]
+  node skills/github-admin/scripts/github-admin.mjs <command> [options]
 
 Commands:
   sync-labels
-  assign-poc [--assignee <login>]
-  remap-poc-milestones
-  reconcile-poc-doc
-  find-task --task <Tn.n>
+  list-issues [--state <open|closed|all>] [--title-prefix <text>] [--title-contains <text>] [--limit <n>]
   list-tasks [--limit <n>]
-  list-issue-comments --issue <n>
-  delete-issue-comment --comment-id <n>
-  update-issue --number <n> [--title <title>] [--body <text>] [--state <open|closed>] [--labels <a,b,c>]
-  create-issue --title <title> [--body <text>] [--labels <a,b,c>] [--milestone <n>] [--assignees <login,login>]
-  list-open-prs
-  list-prs [--state <open|closed|all>]
-  comment-pr --number <n> --body <text>
+  issue-comment --action <list|delete> (list: --issue <n>; delete: --comment-id <n>)
+  update-issue --number <n> [--title <title>] [--body <text>] [--body-file <path>] [--state <open|closed>] [--labels <a,b,c>] [--assignees <login,login>] [--milestone <n>]
+  create-issue --title <title> [--body <text>] [--body-file <path>] [--labels <a,b,c>] [--milestone <n>] [--assignees <login,login>]
+  create-project --title <title> [--private] [--dry-run]   (ProjectV2 owned by GITHUB_REPOSITORY owner; public by default)
+  get-issue --number <n>
+  delete-issue --number <n>
+  label-issue --action <add|remove> (add: --number <n> --labels <a,b>; remove: --number <n> --label <name>)
+  list-prs [--state <open|closed|all>]   (default: open)
+  comment-issue --number <n> --body <text>
+  comment-pr --number <n> --body <text>   (alias: same as comment-issue; works for PRs)
   ensure-release --tag <tag> [--name <title>] [--body <text>] [--draft] [--prerelease]
   upload-release-asset --tag <tag> --file <path> [--label <text>]
   comment-pr-verification --number <n> --artifact-url <url> [--route <route>] [--latest-session-count <n>] [--connected-ribbon <true|false>] [--screenshot <path>] [--dom <path>]
-  list-release-assets --tag <tag>
-  delete-release-asset --asset-id <n>
-  list-pr-review-threads --number <n>
-  resolve-pr-review-thread --thread-id <id>
+  release-asset --action <list|delete> (list: --tag <tag>; delete: --asset-id <n>)
+  pr-review --action <list|resolve> (list: --number <n>; resolve: --thread-id <id>)
   merge-pr --number <n> [--method <merge|squash|rebase>] [--title <title>] [--message <text>]
   create-pr --head <branch> --title <title> [--base <branch>] [--body <text>] [--issue <n>] [--draft]
   update-pr --number <n> [--title <title>] [--body <text>] [--base <branch>] [--state <open|closed>]
   link-pr-task --pr <n> --issue <n> [--close]
-  set-project-status-workflow
+  project --action <link-prs|close-project> [--title-prefix <text>] [--dry-run]
+  set-project-visibility --public|--private [--number <n>] [--dry-run]   (user ProjectV2; default number from GITHUB_PROJECT_NUMBER)
   set-issue-status --issues <n,n,...> --status <status>
-  repair-t0-numbering
-  audit-poc-consistency
-  complete-issue --issue <n> --commit <sha> --note <text>
-  complete-t0 --commit <sha>
-  close-implemented [--commit <sha>]
   report
 
 Environment:
@@ -268,6 +155,13 @@ function parseArgs(argv) {
   return { command, options };
 }
 
+function parseCsvList(value) {
+  return String(value || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 async function rest(method, path, body) {
   const response = await fetch(`https://api.github.com${path}`, {
     method,
@@ -320,6 +214,274 @@ async function allIssues(state = "all") {
 async function allPulls(state = "open") {
   const { owner, repo } = repoParts();
   return rest("GET", `/repos/${owner}/${repo}/pulls?state=${state}&per_page=100`);
+}
+
+async function allPullRequests() {
+  const { owner, repo } = repoParts();
+  const out = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const batch = await rest(
+      "GET",
+      `/repos/${owner}/${repo}/pulls?state=all&per_page=100&page=${page}`,
+    );
+    if (!batch.length) {
+      break;
+    }
+    out.push(...batch);
+    if (batch.length < 100) {
+      break;
+    }
+  }
+  return out;
+}
+
+function taskIdFromIssueTitle(title) {
+  const match = title.match(/\b(T\d+\.\d+)\b/);
+  return match ? match[1] : null;
+}
+
+function taskIdFromPullTitle(title) {
+  const match = title.match(/\b(T\d+\.\d+)\b/);
+  return match ? match[1] : null;
+}
+
+function extractClosingIssueRefsFromText(text) {
+  if (!text) {
+    return [];
+  }
+  const refs = new Set();
+  const re = /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*#(\d+)/gi;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    refs.add(Number(match[1]));
+  }
+  return [...refs];
+}
+
+function buildIssueToPullMap(issues, pulls) {
+  const issueByNum = new Map(issues.map((issue) => [issue.number, issue]));
+  const byIssue = new Map();
+
+  function addCandidate(issueNumber, pullNumber, score, reason) {
+    let inner = byIssue.get(issueNumber);
+    if (!inner) {
+      inner = new Map();
+      byIssue.set(issueNumber, inner);
+    }
+    const prev = inner.get(pullNumber);
+    if (!prev || score > prev.score) {
+      inner.set(pullNumber, { pr: pullNumber, score, reason });
+    }
+  }
+
+  for (const pr of pulls) {
+    const combined = `${pr.title || ""}\n${pr.body || ""}`;
+    for (const num of extractClosingIssueRefsFromText(combined)) {
+      if (!issueByNum.has(num)) {
+        continue;
+      }
+      addCandidate(num, pr.number, 10, "closing-keyword");
+    }
+
+    const prTask = taskIdFromPullTitle(pr.title || "");
+    if (prTask) {
+      for (const iss of issues) {
+        const issueTask = taskIdFromIssueTitle(iss.title);
+        if (issueTask === prTask) {
+          addCandidate(iss.number, pr.number, 8, "task-id");
+        }
+      }
+    }
+  }
+
+  const result = new Map();
+  for (const iss of issues) {
+    const inner = byIssue.get(iss.number);
+    if (!inner?.size) {
+      continue;
+    }
+    const candidates = [...inner.values()];
+    candidates.sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return b.pr - a.pr;
+    });
+    result.set(iss.number, candidates[0]);
+  }
+  return result;
+}
+
+function pullBodyClosesIssue(body, issueNumber) {
+  return new RegExp(`(?:close|fix|resolve)[sd]?\\s*:?\\s*#${issueNumber}\\b`, "i").test(
+    body || "",
+  );
+}
+
+function issueHasLinkedPullComment(comments, pullNumber) {
+  const re = new RegExp(`Linked pull request:\\s*\\[#${pullNumber}\\]`, "i");
+  return comments.some((comment) => re.test(comment.body || ""));
+}
+
+async function ensureIssueLinkedToPull(issueNumber, pullNumber, dryRun) {
+  const { owner, repo } = repoParts();
+  const pull = await getPullRequest(pullNumber);
+  const comments = await rest(
+    "GET",
+    `/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100`,
+  );
+
+  let patchedBody = false;
+  let postedComment = false;
+
+  if (!pullBodyClosesIssue(pull.body, issueNumber)) {
+    patchedBody = true;
+    if (!dryRun) {
+      const nextBody = `${pull.body || ""}\n\nCloses #${issueNumber}`.trim();
+      await rest("PATCH", `/repos/${owner}/${repo}/pulls/${pullNumber}`, {
+        body: nextBody,
+      });
+    }
+  }
+
+  if (!issueHasLinkedPullComment(comments, pullNumber)) {
+    postedComment = true;
+    if (!dryRun) {
+      await rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+        body: `Linked pull request: [#${pullNumber}](${pullUrl(pullNumber)})`,
+      });
+    }
+  }
+
+  return { patchedBody, postedComment };
+}
+
+async function linkPrs(options) {
+  const dryRun = Boolean(options["dry-run"]);
+  const titlePrefix = options["title-prefix"] || null;
+  let issues = (await allIssues()).filter((issue) => !issue.pull_request);
+  if (titlePrefix) {
+    issues = issues.filter((issue) => issue.title.startsWith(titlePrefix));
+  }
+  const pulls = await allPullRequests();
+  const map = buildIssueToPullMap(issues, pulls);
+
+  const linked = [];
+  const alreadyLinked = [];
+  const unmapped = [];
+
+  for (const issue of issues.sort((a, b) => a.number - b.number)) {
+    const pick = map.get(issue.number);
+    if (!pick) {
+      unmapped.push({
+        number: issue.number,
+        title: issue.title,
+      });
+      continue;
+    }
+
+    const actions = await ensureIssueLinkedToPull(issue.number, pick.pr, dryRun);
+    if (!actions.patchedBody && !actions.postedComment) {
+      alreadyLinked.push({
+        issue: issue.number,
+        pull: pick.pr,
+        reason: pick.reason,
+      });
+      continue;
+    }
+
+    linked.push({
+      issue: issue.number,
+      pull: pick.pr,
+      reason: pick.reason,
+      patchedPullBody: actions.patchedBody,
+      postedIssueComment: actions.postedComment,
+      dryRun,
+    });
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        dryRun,
+        mappedIssueCount: map.size,
+        issueCount: issues.length,
+        linked,
+        alreadyLinked,
+        unmapped,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function closeProject(options) {
+  const dryRun = Boolean(options["dry-run"]);
+  const data = await projectData();
+  const project = data.user.projectV2;
+  if (!project) {
+    throw new Error(`No project found for user login and number ${projectNumber()}.`);
+  }
+
+  if (project.closed) {
+    console.log(
+      JSON.stringify(
+        {
+          message: "Project is already closed.",
+          number: projectNumber(),
+          title: project.title,
+          closed: project.closed,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  if (dryRun) {
+    console.log(
+      JSON.stringify(
+        {
+          dryRun: true,
+          number: projectNumber(),
+          title: project.title,
+          wouldSetClosed: true,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  const updated = await graphql(
+    `
+    mutation($projectId: ID!) {
+      updateProjectV2(input: { projectId: $projectId, closed: true }) {
+        projectV2 {
+          id
+          title
+          closed
+        }
+      }
+    }
+    `,
+    { projectId: project.id },
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        message: "Project closed.",
+        number: projectNumber(),
+        project: updated.updateProjectV2.projectV2,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 async function allReleases() {
@@ -419,92 +581,6 @@ async function allMilestones() {
   return rest("GET", `/repos/${owner}/${repo}/milestones?state=all&per_page=100`);
 }
 
-function parsePocTasks(markdown) {
-  const lines = markdown.split("\n");
-  let phase = null;
-  const tasks = new Map();
-
-  for (const line of lines) {
-    if (line.startsWith("# Phase ")) {
-      phase = line.split(":", 2)[1].trim();
-      continue;
-    }
-    const match = line.match(/^## (T\d+\.\d+) (.+)$/);
-    if (match && phase) {
-      const title = `[POC V1] ${match[1]} ${match[2].trim()}`;
-      tasks.set(title, { phase, taskId: match[1] });
-    }
-  }
-
-  return tasks;
-}
-
-function taskIdFromTitle(title) {
-  const match = title.match(/^\[POC V1\] (T\d+\.\d+) /);
-  return match ? match[1] : null;
-}
-
-function parseNumberedSection(markdown, heading) {
-  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = markdown.match(
-    new RegExp(`## ${escapedHeading}\\n\\n([\\s\\S]*?)(?:\\n## |\\n# |$)`),
-  );
-  if (!match) {
-    return [];
-  }
-
-  return match[1]
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => /^\d+\.\s+T\d+\.\d+$/.test(line))
-    .map((line) => {
-      const [, number, taskId] = line.match(/^(\d+)\.\s+(T\d+\.\d+)$/);
-      return { number: Number(number), taskId };
-    });
-}
-
-function addUnique(list, item) {
-  if (!list.includes(item)) {
-    list.push(item);
-  }
-}
-
-function labelsForTask(phase, title) {
-  const labels = ["poc-v1", "task", PHASE_PRIORITY[phase]];
-  const titleLower = title.toLowerCase();
-
-  if (phase === "Foundation Decisions") {
-    addUnique(labels, "design");
-    if (titleLower.includes("graph")) addUnique(labels, "graph");
-    if (titleLower.includes("adapter")) addUnique(labels, "adapter");
-    if (titleLower.includes("fixture") || titleLower.includes("test")) addUnique(labels, "testing");
-  } else if (phase === "App Bootstrap") {
-    addUnique(labels, "frontend");
-    if (titleLower.includes("test")) addUnique(labels, "testing");
-  } else if (phase === "Server Function Backbone") {
-    addUnique(labels, "backend");
-    addUnique(labels, "gateway");
-    if (titleLower.includes("event bridge")) addUnique(labels, "frontend");
-  } else if (phase === "OpenClaw Adapter Minimum Slice") {
-    addUnique(labels, "backend");
-    addUnique(labels, "adapter");
-    addUnique(labels, "gateway");
-  } else if (phase === "Graph Assembly Service") {
-    addUnique(labels, "backend");
-    addUnique(labels, "graph");
-  } else if (phase === "Vertical UI Slice") {
-    addUnique(labels, "frontend");
-    addUnique(labels, "graph");
-  } else if (phase === "Error Handling And Polish") {
-    addUnique(labels, "frontend");
-    if (titleLower.includes("connection") || titleLower.includes("refresh")) addUnique(labels, "gateway");
-  } else if (phase === "End-To-End Proof") {
-    addUnique(labels, "testing");
-    if (titleLower.includes("adapter")) addUnique(labels, "adapter");
-  }
-
-  return labels;
-}
 
 async function syncLabels() {
   const { owner, repo } = repoParts();
@@ -523,93 +599,9 @@ async function syncLabels() {
     }
   }
 
-  const tasks = parsePocTasks(
-    await readFile("docs/milestones/proof-of-concept-1/poc_v1_task_breakdown.md", "utf8"),
-  );
-  const issues = (await allIssues()).filter(
-    (issue) => !issue.pull_request && tasks.has(issue.title),
-  );
-
-  for (const issue of issues) {
-    const { phase } = tasks.get(issue.title);
-    await rest("PATCH", `/repos/${owner}/${repo}/issues/${issue.number}`, {
-      labels: labelsForTask(phase, issue.title),
-    });
-  }
-
-  console.log(`Synced ${Object.keys(LABEL_DEFS).length} labels and relabeled ${issues.length} POC issues.`);
+  console.log(`Synced ${Object.keys(LABEL_DEFS).length} labels.`);
 }
 
-async function ensureMilestones() {
-  const { owner, repo } = repoParts();
-  const existing = await allMilestones();
-  const byTitle = new Map(existing.map((milestone) => [milestone.title, milestone]));
-  const created = new Map();
-
-  for (const spec of POC_MILESTONES) {
-    if (byTitle.has(spec.title)) {
-      created.set(
-        spec.title,
-        await rest("PATCH", `/repos/${owner}/${repo}/milestones/${byTitle.get(spec.title).number}`, {
-          title: spec.title,
-          description: spec.description,
-          state: "open",
-        }),
-      );
-    } else {
-      created.set(spec.title, await rest("POST", `/repos/${owner}/${repo}/milestones`, spec));
-    }
-  }
-
-  return created;
-}
-
-async function remapPocMilestones() {
-  const { owner, repo } = repoParts();
-  const tasks = parsePocTasks(
-    await readFile("docs/milestones/proof-of-concept-1/poc_v1_task_breakdown.md", "utf8"),
-  );
-  const milestones = await ensureMilestones();
-  const issues = (await allIssues()).filter(
-    (issue) => !issue.pull_request && tasks.has(issue.title),
-  );
-
-  for (const issue of issues) {
-    const { phase } = tasks.get(issue.title);
-    const milestone = milestones.get(PHASE_MILESTONE[phase]);
-    await rest("PATCH", `/repos/${owner}/${repo}/issues/${issue.number}`, {
-      milestone: milestone.number,
-    });
-  }
-
-  const freshMilestones = await allMilestones();
-  const stillUsed = new Set(
-    (await allIssues()).filter((issue) => !issue.pull_request && issue.milestone).map((issue) => issue.milestone.title),
-  );
-  for (const milestone of freshMilestones) {
-    if (OLD_MILESTONE_TITLES.includes(milestone.title) && !stillUsed.has(milestone.title)) {
-      await rest("DELETE", `/repos/${owner}/${repo}/milestones/${milestone.number}`);
-    }
-  }
-
-  console.log(`Reassigned ${issues.length} POC issues into ${POC_MILESTONES.length} milestones.`);
-}
-
-async function assignPoc(options) {
-  const { owner, repo } = repoParts();
-  const assignee = options.assignee || owner;
-  const issues = (await allIssues()).filter(
-    (issue) => !issue.pull_request && issue.title.startsWith("[POC V1] "),
-  );
-
-  for (const issue of issues) {
-    await rest("PATCH", `/repos/${owner}/${repo}/issues/${issue.number}`, {
-      assignees: [assignee],
-    });
-  }
-
-  console.log(`Assigned ${issues.length} POC issues to ${assignee}.`);
-}
 
 async function addIssueToProject(projectId, contentId) {
   const data = await graphql(
@@ -629,6 +621,198 @@ async function addIssueToProject(projectId, contentId) {
   );
 
   return data.addProjectV2ItemById.item.id;
+}
+
+function resolveUserProjectNumberArg(raw) {
+  if (raw == null || raw === "") {
+    return projectNumber();
+  }
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error("set-project-visibility --number must be a positive integer.");
+  }
+  return n;
+}
+
+async function fetchUserProjectV2Summary(overrideNumber) {
+  const { owner } = repoParts();
+  const number = resolveUserProjectNumberArg(overrideNumber);
+  const data = await graphql(
+    `
+    query($owner:String!, $number:Int!) {
+      user(login:$owner) {
+        projectV2(number:$number) {
+          id
+          title
+          public
+          url
+          closed
+        }
+      }
+    }
+    `,
+    { owner, number },
+  );
+  return { project: data.user.projectV2, number };
+}
+
+async function setProjectVisibility(options) {
+  const dryRun = Boolean(options["dry-run"]);
+  const wantPublic = Boolean(options.public);
+  const wantPrivate = Boolean(options.private);
+  if (wantPublic === wantPrivate) {
+    throw new Error(
+      "set-project-visibility requires exactly one of --public or --private.",
+    );
+  }
+  const { project, number } = await fetchUserProjectV2Summary(options.number);
+  if (!project) {
+    throw new Error(
+      `No user ProjectV2 found for login and number ${number}. Check GITHUB_REPOSITORY owner and --number.`,
+    );
+  }
+  if (dryRun) {
+    console.log(
+      JSON.stringify(
+        {
+          dryRun: true,
+          wouldSetPublic: wantPublic,
+          project: {
+            id: project.id,
+            title: project.title,
+            public: project.public,
+            url: project.url,
+            closed: project.closed,
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  const updated = await graphql(
+    `
+    mutation($projectId: ID!, $public: Boolean!) {
+      updateProjectV2(input: { projectId: $projectId, public: $public }) {
+        projectV2 {
+          id
+          title
+          public
+          url
+          closed
+        }
+      }
+    }
+    `,
+    { projectId: project.id, public: wantPublic },
+  );
+  console.log(
+    JSON.stringify({ project: updated.updateProjectV2.projectV2 }, null, 2),
+  );
+}
+
+async function fetchRepositoryOwnerNodeId() {
+  const { owner, repo } = repoParts();
+  const data = await graphql(
+    `
+    query($owner: String!, $name: String!) {
+      repository(owner: $owner, name: $name) {
+        owner {
+          __typename
+          id
+        }
+      }
+    }
+    `,
+    { owner, name: repo },
+  );
+  const ownerNode = data.repository?.owner;
+  if (!ownerNode?.id) {
+    throw new Error(
+      `Could not resolve owner id for repository ${owner}/${repo}.`,
+    );
+  }
+  return { ownerId: ownerNode.id, ownerTypename: ownerNode.__typename };
+}
+
+async function createProjectCommand(options) {
+  const dryRun = Boolean(options["dry-run"]);
+  const title = String(options.title || "").trim();
+  if (!title) {
+    throw new Error("create-project requires --title <text>.");
+  }
+  const stayPrivate = Boolean(options.private);
+  const { ownerId, ownerTypename } = await fetchRepositoryOwnerNodeId();
+  if (dryRun) {
+    console.log(
+      JSON.stringify(
+        {
+          dryRun: true,
+          title,
+          ownerTypename,
+          wouldCreatePublic: !stayPrivate,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  const created = await graphql(
+    `
+    mutation($ownerId: ID!, $title: String!) {
+      createProjectV2(input: { ownerId: $ownerId, title: $title }) {
+        projectV2 {
+          id
+          title
+          public
+          url
+          number
+          closed
+        }
+      }
+    }
+    `,
+    { ownerId, title },
+  );
+  const project = created.createProjectV2.projectV2;
+  if (!project) {
+    throw new Error("createProjectV2 returned no project.");
+  }
+  if (stayPrivate) {
+    console.log(
+      JSON.stringify({ project, visibility: "private" }, null, 2),
+    );
+    return;
+  }
+  const updated = await graphql(
+    `
+    mutation($projectId: ID!, $public: Boolean!) {
+      updateProjectV2(input: { projectId: $projectId, public: $public }) {
+        projectV2 {
+          id
+          title
+          public
+          url
+          number
+          closed
+        }
+      }
+    }
+    `,
+    { projectId: project.id, public: true },
+  );
+  console.log(
+    JSON.stringify(
+      {
+        project: updated.updateProjectV2.projectV2,
+        visibility: "public",
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 async function projectData() {
@@ -651,6 +835,7 @@ async function projectData() {
         projectV2(number:$number) {
           id
           title
+          closed
           fields(first:50) {
             nodes {
               ... on ProjectV2FieldCommon {
@@ -704,96 +889,151 @@ async function projectData() {
   );
 }
 
-async function setProjectStatusWorkflow() {
-  const data = await projectData();
-  const project = data.user.projectV2;
-  const statusField = project.fields.nodes.find((field) => field?.name === "Status");
-  if (!statusField) {
-    throw new Error("Project Status field was not found.");
-  }
 
-  const updated = await graphql(
-    `
-    mutation($field:ID!, $name:String!, $options:[ProjectV2SingleSelectFieldOptionInput!]) {
-      updateProjectV2Field(input:{fieldId:$field, name:$name, singleSelectOptions:$options}) {
-        projectV2Field {
-          ... on ProjectV2SingleSelectField {
-            id
-            name
-            options { id name }
-          }
-        }
-      }
-    }
-    `,
-    {
-      field: statusField.id,
-      name: "Status",
-      options: [
-        { name: "Backlog", color: "GRAY", description: "Known work that is not yet ready to start" },
-        { name: "Ready", color: "BLUE", description: "Ready to pick up next" },
-        { name: "In Progress", color: "YELLOW", description: "Actively being worked on" },
-        { name: "Ready for Merge", color: "ORANGE", description: "Implementation is complete and awaiting merge" },
-        { name: "Blocked", color: "RED", description: "Blocked by an external dependency or decision" },
-        { name: "Done", color: "GREEN", description: "Completed work" },
-      ],
-    },
-  );
-
-  const options = Object.fromEntries(
-    updated.updateProjectV2Field.projectV2Field.options.map((option) => [option.name, option.id]),
-  );
-
-  for (const item of project.items.nodes) {
-    const issue = item.content;
-    if (!issue || issue.__typename !== "Issue") {
-      continue;
-    }
-    const target = issue.state === "CLOSED" ? "Done" : "Backlog";
-    await graphql(
-      `
-      mutation($project:ID!, $item:ID!, $field:ID!, $option:String!) {
-        updateProjectV2ItemFieldValue(input:{projectId:$project, itemId:$item, fieldId:$field, value:{singleSelectOptionId:$option}}) {
-          projectV2Item { id }
-        }
-      }
-      `,
-      {
-        project: project.id,
-        item: item.id,
-        field: statusField.id,
-        option: options[target],
-      },
+async function fetchAllNonPullRequestIssues() {
+  const { owner, repo } = repoParts();
+  const out = [];
+  for (let page = 1; page <= 50; page += 1) {
+    const batch = await rest(
+      "GET",
+      `/repos/${owner}/${repo}/issues?state=all&per_page=100&page=${page}`,
     );
+    if (!batch.length) {
+      break;
+    }
+    for (const issue of batch) {
+      if (!issue.pull_request) {
+        out.push(issue);
+      }
+    }
+    if (batch.length < 100) {
+      break;
+    }
   }
-
-  console.log(
-    "Updated Project Status workflow to Backlog / Ready / In Progress / Ready for Merge / Blocked / Done.",
-  );
+  return out;
 }
 
-async function findTask(options) {
-  const taskId = options.task;
-  if (!taskId) {
-    throw new Error("find-task requires --task <Tn.n>.");
+function normalizeTitleFilter(value) {
+  return String(value).toLowerCase();
+}
+
+async function listIssues(options) {
+  const raw = String(options.state || "all").toLowerCase();
+  const titlePrefix = options["title-prefix"] || options.titlePrefix;
+  const titleContains = options["title-contains"] || options.titleContains;
+  const limit = Math.max(1, Math.min(2000, Number(options.limit || 500)));
+
+  let issues = await fetchAllNonPullRequestIssues();
+  if (raw === "open") {
+    issues = issues.filter((issue) => issue.state === "open");
+  } else if (raw === "closed") {
+    issues = issues.filter((issue) => issue.state === "closed");
+  } else if (raw !== "all") {
+    throw new Error("list-issues --state must be open, closed, or all.");
+  }
+  if (titlePrefix) {
+    const normalizedPrefix = normalizeTitleFilter(titlePrefix);
+    issues = issues.filter((issue) => normalizeTitleFilter(issue.title).startsWith(normalizedPrefix));
+  }
+  if (titleContains) {
+    const normalizedContains = normalizeTitleFilter(titleContains);
+    issues = issues.filter((issue) => normalizeTitleFilter(issue.title).includes(normalizedContains));
   }
 
-  const prefix = `[POC V1] ${taskId} `;
-  const matches = (await allIssues()).filter(
-    (issue) => !issue.pull_request && issue.title.startsWith(prefix),
-  );
-
+  issues = issues.slice(0, limit);
   console.log(
     JSON.stringify(
-      matches.map((issue) => ({
+      issues.map((issue) => ({
         number: issue.number,
         state: issue.state,
         title: issue.title,
+        url: issue.html_url,
+        labels: (issue.labels || []).map((label) => label.name),
       })),
       null,
       2,
     ),
   );
+}
+
+async function getIssueCmd(options) {
+  const number = Number(options.number);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("get-issue requires --number <n>.");
+  }
+  const { owner, repo } = repoParts();
+  const issue = await rest("GET", `/repos/${owner}/${repo}/issues/${number}`);
+  console.log(
+    JSON.stringify(
+      {
+        number: issue.number,
+        title: issue.title,
+        body: issue.body,
+        state: issue.state,
+        labels: (issue.labels || []).map((l) => l.name),
+        milestone: issue.milestone ? { number: issue.milestone.number, title: issue.milestone.title } : null,
+        assignees: (issue.assignees || []).map((a) => a.login),
+        url: issue.html_url,
+        isPullRequest: Boolean(issue.pull_request),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function deleteIssueByNumber(options) {
+  const number = Number(options.number);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("delete-issue requires --number <n>.");
+  }
+  const { owner, repo } = repoParts();
+  const issue = await rest("GET", `/repos/${owner}/${repo}/issues/${number}`);
+  if (issue.pull_request) {
+    throw new Error("delete-issue only deletes issues, not pull requests.");
+  }
+  await graphql(
+    `
+    mutation($issue: ID!) {
+      deleteIssue(input: { issueId: $issue }) {
+        clientMutationId
+      }
+    }
+    `,
+    { issue: issue.node_id },
+  );
+  console.log(JSON.stringify({ deleted: true, number }, null, 2));
+}
+
+async function labelIssue(options) {
+  const { owner, repo } = repoParts();
+  const number = Number(options.number);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("label-issue requires --number <n>.");
+  }
+  const action = String(options.action || "").toLowerCase();
+
+  if (action === "add") {
+    const labels = parseCsvList(options.labels);
+    if (labels.length === 0) {
+      throw new Error("label-issue --action add requires --labels <a,b,...>.");
+    }
+    const issue = await rest("POST", `/repos/${owner}/${repo}/issues/${number}/labels`, { labels });
+    console.log(JSON.stringify({ number, labels: issue.map((l) => l.name) }, null, 2));
+    return;
+  }
+
+  if (action === "remove") {
+    const label = String(options.label || "").trim();
+    if (!label) {
+      throw new Error("label-issue --action remove requires --label <name>.");
+    }
+    await rest("DELETE", `/repos/${owner}/${repo}/issues/${number}/labels/${encodeURIComponent(label)}`);
+    console.log(JSON.stringify({ number, removed: label }, null, 2));
+    return;
+  }
+
+  throw new Error("label-issue requires --action add (--labels <a,b>) or --action remove (--label <name>).");
 }
 
 function issueUrl(issueNumber) {
@@ -854,15 +1094,11 @@ async function listPrs(options) {
   );
 }
 
-async function listOpenPrs() {
-  await listPrs({ state: "open" });
-}
-
-async function listIssueComments(options) {
+async function listComments(options) {
   const { owner, repo } = repoParts();
   const issueNumber = Number(options.issue);
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
-    throw new Error("list-issue-comments requires --issue <n>.");
+    throw new Error("issue-comment --action list requires --issue <n>.");
   }
 
   const comments = await rest(
@@ -885,11 +1121,11 @@ async function listIssueComments(options) {
   );
 }
 
-async function deleteIssueComment(options) {
+async function deleteComment(options) {
   const { owner, repo } = repoParts();
   const commentId = Number(options["comment-id"] || options.commentId);
   if (!Number.isInteger(commentId) || commentId <= 0) {
-    throw new Error("delete-issue-comment requires --comment-id <n>.");
+    throw new Error("issue-comment --action delete requires --comment-id <n>.");
   }
 
   await rest("DELETE", `/repos/${owner}/${repo}/issues/comments/${commentId}`);
@@ -902,10 +1138,10 @@ async function commentPr(options) {
   const body = options.body;
 
   if (!Number.isInteger(number) || number <= 0) {
-    throw new Error("comment-pr requires --number <n>.");
+    throw new Error("comment-issue / comment-pr requires --number <n>.");
   }
   if (!body || typeof body !== "string") {
-    throw new Error("comment-pr requires --body <text>.");
+    throw new Error("comment-issue / comment-pr requires --body <text>.");
   }
 
   const comment = await rest(
@@ -1025,10 +1261,10 @@ async function uploadReleaseAsset(options) {
   );
 }
 
-async function listReleaseAssets(options) {
+async function listAssets(options) {
   const tag = options.tag;
   if (!tag || typeof tag !== "string") {
-    throw new Error("list-release-assets requires --tag <tag>.");
+    throw new Error("release-asset --action list requires --tag <tag>.");
   }
 
   const release = await getReleaseByTag(tag);
@@ -1060,10 +1296,10 @@ async function listReleaseAssets(options) {
   );
 }
 
-async function deleteReleaseAssetCommand(options) {
+async function deleteAsset(options) {
   const assetId = Number(options["asset-id"] || options.assetId);
   if (!Number.isInteger(assetId) || assetId <= 0) {
-    throw new Error("delete-release-asset requires --asset-id <n>.");
+    throw new Error("release-asset --action delete requires --asset-id <n>.");
   }
 
   await deleteReleaseAsset(assetId);
@@ -1153,10 +1389,10 @@ async function mergePr(options) {
   );
 }
 
-async function listPrReviewThreads(options) {
+async function listReviewThreads(options) {
   const number = Number(options.number);
   if (!Number.isInteger(number) || number <= 0) {
-    throw new Error("list-pr-review-threads requires --number <n>.");
+    throw new Error("pr-review --action list requires --number <n>.");
   }
 
   const { owner, repo } = repoParts();
@@ -1219,10 +1455,10 @@ async function listPrReviewThreads(options) {
   );
 }
 
-async function resolvePrReviewThread(options) {
+async function resolveThread(options) {
   const threadId = options["thread-id"] || options.threadId;
   if (!threadId) {
-    throw new Error("resolve-pr-review-thread requires --thread-id <id>.");
+    throw new Error("pr-review --action resolve requires --thread-id <id>.");
   }
 
   const data = await graphql(
@@ -1344,16 +1580,25 @@ async function createIssue(options) {
     throw new Error("create-issue requires --title <text>.");
   }
 
+  const bodyFile = options["body-file"] || options.bodyFile;
+  const hasInlineBody = options.body != null && String(options.body).length > 0;
+  if (bodyFile && hasInlineBody) {
+    throw new Error("create-issue: use either --body or --body-file, not both.");
+  }
+  let bodyText = "";
+  if (bodyFile) {
+    bodyText = await readFile(path.resolve(String(bodyFile)), "utf8");
+  } else if (options.body != null) {
+    bodyText = String(options.body);
+  }
+
   const payload = {
     title,
-    body: options.body != null ? String(options.body) : "",
+    body: bodyText,
   };
 
   if (options.labels) {
-    payload.labels = String(options.labels)
-      .split(",")
-      .map((label) => label.trim())
-      .filter(Boolean);
+    payload.labels = parseCsvList(options.labels);
   }
 
   if (options.milestone) {
@@ -1365,10 +1610,7 @@ async function createIssue(options) {
   }
 
   if (options.assignees) {
-    payload.assignees = String(options.assignees)
-      .split(",")
-      .map((login) => login.trim())
-      .filter(Boolean);
+    payload.assignees = parseCsvList(options.assignees);
   }
 
   const issue = await rest("POST", `/repos/${owner}/${repo}/issues`, payload);
@@ -1394,19 +1636,38 @@ async function updateIssue(options) {
     throw new Error("update-issue requires --number <n>.");
   }
 
+  const bodyFile = options["body-file"] || options.bodyFile;
+  const hasInlineBody = options.body != null && String(options.body).length > 0;
+  if (bodyFile && hasInlineBody) {
+    throw new Error("update-issue: use either --body or --body-file, not both.");
+  }
+
   const patch = {};
   if (options.title) patch.title = options.title;
-  if (options.body) patch.body = options.body;
+  if (bodyFile) {
+    patch.body = await readFile(path.resolve(String(bodyFile)), "utf8");
+  } else if (options.body) {
+    patch.body = options.body;
+  }
   if (options.state) patch.state = options.state;
   if (options.labels) {
-    patch.labels = String(options.labels)
-      .split(",")
-      .map((label) => label.trim())
-      .filter(Boolean);
+    patch.labels = parseCsvList(options.labels);
+  }
+  if (options.assignees) {
+    patch.assignees = parseCsvList(options.assignees);
+  }
+  if (options.milestone !== undefined) {
+    const milestone = Number(options.milestone);
+    if (!Number.isInteger(milestone) || milestone <= 0) {
+      throw new Error("update-issue --milestone must be a positive integer (repo milestone number).");
+    }
+    patch.milestone = milestone;
   }
 
   if (Object.keys(patch).length === 0) {
-    throw new Error("update-issue requires at least one of --title, --body, --state, or --labels.");
+    throw new Error(
+      "update-issue requires at least one of --title, --body, --body-file, --state, --labels, --assignees, or --milestone.",
+    );
   }
 
   const issue = await rest("PATCH", `/repos/${owner}/${repo}/issues/${number}`, patch);
@@ -1425,7 +1686,6 @@ async function updateIssue(options) {
 }
 
 async function linkPrTask(options) {
-  const { owner, repo } = repoParts();
   const issueNumber = Number(options.issue);
   const pullNumber = Number(options.pr);
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
@@ -1435,16 +1695,11 @@ async function linkPrTask(options) {
     throw new Error("link-pr-task requires --pr <n>.");
   }
 
-  const pull = await getPullRequest(pullNumber);
-  const closingLine = options.close ? `\n\nCloses #${issueNumber}` : "";
-  const nextBody = `${pull.body || ""}${closingLine}`.trim();
-
-  await rest("PATCH", `/repos/${owner}/${repo}/pulls/${pullNumber}`, {
-    body: nextBody,
-  });
-  await rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
-    body: `Linked pull request: [#${pullNumber}](${pullUrl(pullNumber)})`,
-  });
+  const { patchedBody, postedComment } = await ensureIssueLinkedToPull(
+    issueNumber,
+    pullNumber,
+    false,
+  );
 
   console.log(
     JSON.stringify(
@@ -1458,138 +1713,13 @@ async function linkPrTask(options) {
           url: pullUrl(pullNumber),
         },
         closesIssue: Boolean(options.close),
+        patchedBody,
+        postedComment,
       },
       null,
       2,
     ),
   );
-}
-
-async function reconcilePocDoc() {
-  const { owner, repo } = repoParts();
-  const markdown = await readFile(
-    "docs/milestones/proof-of-concept-1/poc_v1_task_breakdown.md",
-    "utf8",
-  );
-  const tasks = parsePocTasks(markdown);
-  const milestones = await ensureMilestones();
-  const issues = (await allIssues()).filter(
-    (issue) => !issue.pull_request && issue.title.startsWith("[POC V1] "),
-  );
-  const byTitle = new Map(issues.map((issue) => [issue.title, issue]));
-  const byTaskId = new Map(
-    issues
-      .map((issue) => [taskIdFromTitle(issue.title), issue])
-      .filter(([taskId]) => taskId),
-  );
-
-  const project = (await projectData()).user.projectV2;
-  const statusField = project.fields.nodes.find((field) => field?.name === "Status");
-  const backlogOption = statusField?.options?.find((option) => option.name === "Backlog");
-  const projectItems = new Map(
-    project.items.nodes
-      .filter((item) => item.content?.__typename === "Issue")
-      .map((item) => [item.content.number, item.id]),
-  );
-
-  const created = [];
-  const renamed = [];
-
-  for (const [title, meta] of tasks.entries()) {
-    let issue = byTitle.get(title);
-    if (!issue) {
-      const taskId = meta.taskId;
-      const existingByTaskId = byTaskId.get(taskId);
-      if (existingByTaskId && existingByTaskId.title !== title) {
-        issue = await rest("PATCH", `/repos/${owner}/${repo}/issues/${existingByTaskId.number}`, {
-          title,
-        });
-        renamed.push({
-          number: issue.number,
-          from: existingByTaskId.title,
-          to: title,
-        });
-        byTitle.delete(existingByTaskId.title);
-        byTitle.set(title, issue);
-        byTaskId.set(taskId, issue);
-      }
-    }
-
-    if (!issue) {
-      issue = await rest("POST", `/repos/${owner}/${repo}/issues`, {
-        title,
-        labels: labelsForTask(meta.phase, title),
-        milestone: milestones.get(PHASE_MILESTONE[meta.phase]).number,
-        assignees: [owner],
-      });
-      created.push({ number: issue.number, title: issue.title });
-      byTitle.set(title, issue);
-      byTaskId.set(meta.taskId, issue);
-    } else {
-      await rest("PATCH", `/repos/${owner}/${repo}/issues/${issue.number}`, {
-        labels: labelsForTask(meta.phase, title),
-        milestone: milestones.get(PHASE_MILESTONE[meta.phase]).number,
-      });
-    }
-
-    let itemId = projectItems.get(issue.number);
-    if (!itemId) {
-      itemId = await addIssueToProject(project.id, issue.node_id);
-      projectItems.set(issue.number, itemId);
-    }
-
-    if (statusField && backlogOption && issue.state === "open") {
-      await graphql(
-        `
-        mutation($project:ID!, $item:ID!, $field:ID!, $option:String!) {
-          updateProjectV2ItemFieldValue(input:{projectId:$project, itemId:$item, fieldId:$field, value:{singleSelectOptionId:$option}}) {
-            projectV2Item { id }
-          }
-        }
-        `,
-        {
-          project: project.id,
-          item: itemId,
-          field: statusField.id,
-          option: backlogOption.id,
-        },
-      );
-    }
-  }
-
-  const stale = issues
-    .filter((issue) => !tasks.has(issue.title) && !tasks.has(`[POC V1] ${taskIdFromTitle(issue.title) || ""}`))
-    .map((issue) => ({
-      number: issue.number,
-      title: issue.title,
-    }));
-
-  console.log(
-    JSON.stringify(
-      {
-        created,
-        renamed,
-        stale,
-      },
-      null,
-      2,
-    ),
-  );
-}
-
-async function closeImplemented(options) {
-  const { owner, repo } = repoParts();
-  const commit = options.commit || "062d615";
-  const commitUrl = `https://github.com/${owner}/${repo}/commit/${commit}`;
-
-  for (const [issueNumber, issue] of Object.entries(IMPLEMENTED_ISSUES)) {
-    await rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
-      body: `Implemented in [${commit}](${commitUrl}).\n\nWhat landed:\n- ${issue.body}\n\nThis is now present in the current repository state and was shipped as part of the initial published baseline.`,
-    });
-    await rest("PATCH", `/repos/${owner}/${repo}/issues/${issueNumber}`, { state: "closed" });
-  }
-
-  console.log(`Commented on and closed ${Object.keys(IMPLEMENTED_ISSUES).length} implemented issues.`);
 }
 
 async function setIssueStatus(options) {
@@ -1662,198 +1792,11 @@ async function setIssueStatus(options) {
   );
 }
 
-async function completeT0(options) {
-  const { owner, repo } = repoParts();
-  const commit = options.commit;
-  if (!commit) {
-    throw new Error("complete-t0 requires --commit <sha>.");
-  }
-  const commitUrl = `https://github.com/${owner}/${repo}/commit/${commit}`;
-
-  for (const [issueNumber, issue] of Object.entries(T0_IMPLEMENTED_ISSUES)) {
-    await rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
-      body:
-        `Implemented in [${commit}](${commitUrl}).\n\nWhat landed:\n- ${issue.comment}\n\nThis completes the corresponding T0 foundation decision work in the repository docs.`,
-    });
-    await rest("PATCH", `/repos/${owner}/${repo}/issues/${issueNumber}`, {
-      state: "closed",
-    });
-  }
-
-  await setIssueStatus({
-    issues: Object.keys(T0_IMPLEMENTED_ISSUES).join(","),
-    status: "Done",
-  });
-
-  console.log(
-    `Commented on, closed, and marked done for ${Object.keys(T0_IMPLEMENTED_ISSUES).length} T0 issues.`,
-  );
-}
-
-async function completeIssue(options) {
-  const { owner, repo } = repoParts();
-  const issueNumber = Number(options.issue);
-  const commit = options.commit;
-  const note = options.note;
-
-  if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
-    throw new Error("complete-issue requires --issue <n>.");
-  }
-  if (!commit) {
-    throw new Error("complete-issue requires --commit <sha>.");
-  }
-  if (!note) {
-    throw new Error("complete-issue requires --note <text>.");
-  }
-
-  const commitUrl = `https://github.com/${owner}/${repo}/commit/${commit}`;
-  await rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
-    body:
-      `Implemented in [${commit}](${commitUrl}).\n\nWhat landed:\n- ${note}\n\nThis issue is now complete in the repository state referenced above.`,
-  });
-  await rest("PATCH", `/repos/${owner}/${repo}/issues/${issueNumber}`, {
-    state: "closed",
-  });
-
-  await setIssueStatus({
-    issues: String(issueNumber),
-    status: "Done",
-  });
-
-  console.log(`Commented on, closed, and marked done for issue #${issueNumber}.`);
-}
-
-async function repairT0Numbering() {
-  const { owner, repo } = repoParts();
-  const issues = (await allIssues()).filter(
-    (issue) => !issue.pull_request && issue.title.startsWith("[POC V1] T0."),
-  );
-
-  const removed = issues.find(
-    (issue) => issue.title === "[POC V1] T0.3 Create stable fixtures before adapter implementation",
-  );
-  const renamed = issues.find(
-    (issue) => issue.title === "[POC V1] T0.4 Choose the graph rendering strategy",
-  );
-
-  if (renamed) {
-    await rest("PATCH", `/repos/${owner}/${repo}/issues/${renamed.number}`, {
-      title: "[POC V1] T0.3 Choose the graph rendering strategy",
-    });
-  }
-
-  if (removed) {
-    await graphql(
-      `
-      mutation($issue:ID!) {
-        deleteIssue(input:{issueId:$issue}) {
-          clientMutationId
-        }
-      }
-      `,
-      { issue: removed.node_id },
-    );
-  }
-
-  const refreshed = (await allIssues()).filter(
-    (issue) => !issue.pull_request && issue.title.startsWith("[POC V1] T0."),
-  );
-
-  console.log(
-    JSON.stringify(
-      {
-        deletedIssue: removed ? { number: removed.number, title: removed.title } : null,
-        renamedIssue: renamed
-          ? {
-              number: renamed.number,
-              title: "[POC V1] T0.3 Choose the graph rendering strategy",
-            }
-          : null,
-        currentT0Issues: refreshed.map((issue) => ({
-          number: issue.number,
-          state: issue.state,
-          title: issue.title,
-        })),
-      },
-      null,
-      2,
-    ),
-  );
-}
-
-async function auditPocConsistency() {
-  const markdown = await readFile(
-    "docs/milestones/proof-of-concept-1/poc_v1_task_breakdown.md",
-    "utf8",
-  );
-  const tasks = parsePocTasks(markdown);
-  const docTitles = [...tasks.keys()].sort();
-
-  const suggestedExecutionOrder = parseNumberedSection(markdown, "Suggested Execution Order");
-  const smallestUsefulVerticalSlice = parseNumberedSection(markdown, "Smallest Useful Vertical Slice");
-
-  function numberingIssues(entries, sectionName) {
-    const problems = [];
-    for (let index = 0; index < entries.length; index += 1) {
-      const expected = index + 1;
-      if (entries[index].number !== expected) {
-        problems.push({
-          section: sectionName,
-          expected,
-          found: entries[index].number,
-          taskId: entries[index].taskId,
-        });
-      }
-    }
-    return problems;
-  }
-
-  const githubIssues = (await allIssues()).filter(
-    (issue) => !issue.pull_request && issue.title.startsWith("[POC V1] "),
-  );
-  const githubTitles = githubIssues.map((issue) => issue.title).sort();
-
-  const docMissingOnGithub = docTitles.filter((title) => !githubTitles.includes(title));
-  const githubMissingInDoc = githubTitles.filter((title) => !docTitles.includes(title));
-
-  const duplicateGithubTitles = [...new Set(
-    githubTitles.filter((title, index) => githubTitles.indexOf(title) !== index),
-  )];
-
-  const t0Issues = githubIssues
-    .filter((issue) => issue.title.startsWith("[POC V1] T0."))
-    .map((issue) => ({ number: issue.number, title: issue.title }))
-    .sort((a, b) => a.number - b.number);
-
-  console.log(
-    JSON.stringify(
-      {
-        local: {
-          docTaskCount: docTitles.length,
-          numberingProblems: [
-            ...numberingIssues(suggestedExecutionOrder, "Suggested Execution Order"),
-            ...numberingIssues(smallestUsefulVerticalSlice, "Smallest Useful Vertical Slice"),
-          ],
-        },
-        github: {
-          pocIssueCount: githubIssues.length,
-          t0Issues,
-          docMissingOnGithub,
-          githubMissingInDoc,
-          duplicateGithubTitles,
-        },
-      },
-      null,
-      2,
-    ),
-  );
-}
-
 async function report() {
   const data = await projectData();
   const project = data.user.projectV2;
   const milestones = await allMilestones();
-  const issues = (await allIssues()).filter((issue) => !issue.pull_request && issue.title.startsWith("[POC V1] "));
+  const issues = (await allIssues()).filter((issue) => !issue.pull_request);
   console.log(
     JSON.stringify(
       {
@@ -1866,7 +1809,7 @@ async function report() {
             .filter(Boolean)
             .map((field) => field.name),
         },
-        pocIssueCount: issues.length,
+        issueCount: issues.length,
         milestones: milestones.map((milestone) => ({
           title: milestone.title,
           open: milestone.open_issues,
@@ -1967,51 +1910,105 @@ async function listTasks(options) {
   console.log(JSON.stringify(sorted.slice(0, limit), null, 2));
 }
 
-const { command, options } = parseArgs(process.argv.slice(2));
-
-if (!command || command === "help" || command === "--help") {
-  usage();
-  process.exit(command ? 0 : 1);
+async function releaseAsset(options) {
+  const action = String(options.action || "").toLowerCase();
+  if (action === "list") {
+    return listAssets(options);
+  }
+  if (action === "delete") {
+    return deleteAsset(options);
+  }
+  throw new Error(
+    "release-asset requires --action list (--tag <tag>) or --action delete (--asset-id <n>).",
+  );
 }
 
-const commands = {
-  "sync-labels": syncLabels,
-  "assign-poc": () => assignPoc(options),
-  "remap-poc-milestones": remapPocMilestones,
-  "reconcile-poc-doc": reconcilePocDoc,
-  "find-task": () => findTask(options),
-  "list-tasks": () => listTasks(options),
-  "list-issue-comments": () => listIssueComments(options),
-  "delete-issue-comment": () => deleteIssueComment(options),
-  "update-issue": () => updateIssue(options),
-  "create-issue": () => createIssue(options),
-  "list-open-prs": listOpenPrs,
-  "list-prs": () => listPrs(options),
-  "comment-pr": () => commentPr(options),
-  "ensure-release": () => ensureRelease(options),
-  "upload-release-asset": () => uploadReleaseAsset(options),
-  "list-release-assets": () => listReleaseAssets(options),
-  "delete-release-asset": () => deleteReleaseAssetCommand(options),
-  "comment-pr-verification": () => commentPrVerification(options),
-  "list-pr-review-threads": () => listPrReviewThreads(options),
-  "resolve-pr-review-thread": () => resolvePrReviewThread(options),
-  "merge-pr": () => mergePr(options),
-  "create-pr": () => createPr(options),
-  "update-pr": () => updatePr(options),
-  "link-pr-task": () => linkPrTask(options),
-  "set-project-status-workflow": setProjectStatusWorkflow,
-  "set-issue-status": () => setIssueStatus(options),
-  "repair-t0-numbering": repairT0Numbering,
-  "audit-poc-consistency": auditPocConsistency,
-  "complete-issue": () => completeIssue(options),
-  "complete-t0": () => completeT0(options),
-  "close-implemented": () => closeImplemented(options),
-  report,
-};
-
-if (!commands[command]) {
-  usage();
-  throw new Error(`Unknown command: ${command}`);
+async function issueComment(options) {
+  const action = String(options.action || "").toLowerCase();
+  if (action === "list") {
+    return listComments(options);
+  }
+  if (action === "delete") {
+    return deleteComment(options);
+  }
+  throw new Error(
+    "issue-comment requires --action list (--issue <n>) or --action delete (--comment-id <n>).",
+  );
 }
 
-await commands[command]();
+async function prReview(options) {
+  const action = String(options.action || "").toLowerCase();
+  if (action === "list") {
+    return listReviewThreads(options);
+  }
+  if (action === "resolve") {
+    return resolveThread(options);
+  }
+  throw new Error(
+    "pr-review requires --action list (--number <n>) or --action resolve (--thread-id <id>).",
+  );
+}
+
+async function project(options) {
+  const action = String(options.action || "").toLowerCase();
+  if (action === "link-prs") {
+    return linkPrs(options);
+  }
+  if (action === "close-project") {
+    return closeProject(options);
+  }
+  throw new Error(
+    "project requires --action link-prs [--title-prefix <text>] [--dry-run] or --action close-project [--dry-run].",
+  );
+}
+
+async function main(argv = process.argv.slice(2)) {
+  const { command, options } = parseArgs(argv);
+
+  if (!command || command === "help" || command === "--help") {
+    usage();
+    process.exit(command ? 0 : 1);
+  }
+
+  const commands = {
+    "sync-labels": syncLabels,
+    "list-issues": () => listIssues(options),
+    "list-tasks": () => listTasks(options),
+    "issue-comment": () => issueComment(options),
+    "update-issue": () => updateIssue(options),
+    "get-issue": () => getIssueCmd(options),
+    "delete-issue": () => deleteIssueByNumber(options),
+    "label-issue": () => labelIssue(options),
+    "create-issue": () => createIssue(options),
+    "create-project": () => createProjectCommand(options),
+    "list-prs": () => listPrs(options),
+    "comment-issue": () => commentPr(options),
+    "comment-pr": () => commentPr(options),
+    "ensure-release": () => ensureRelease(options),
+    "upload-release-asset": () => uploadReleaseAsset(options),
+    "release-asset": () => releaseAsset(options),
+    "comment-pr-verification": () => commentPrVerification(options),
+    "pr-review": () => prReview(options),
+    "merge-pr": () => mergePr(options),
+    "create-pr": () => createPr(options),
+    "update-pr": () => updatePr(options),
+    "link-pr-task": () => linkPrTask(options),
+    "project": () => project(options),
+    "set-project-visibility": () => setProjectVisibility(options),
+    "set-issue-status": () => setIssueStatus(options),
+    report,
+  };
+
+  if (!commands[command]) {
+    usage();
+    throw new Error(`Unknown command: ${command}`);
+  }
+
+  await commands[command]();
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}
+
+export { linkPrTask, listIssues, main, parseArgs, updateIssue };
