@@ -594,6 +594,28 @@ pub use sse::router;
 
 - [ ] **Delete `src/live.rs`** and update imports in `src/main.rs`. The public API stays the same: `init_live_hub()`, `run_gateway_event_bridge()`, `router()`.
 
+### Step 5: Verify and commit
+
+- [ ] **Run full verification**
+
+```bash
+cargo fmt --all
+cargo check
+cargo check --features server
+cargo test --features server
+cargo test
+```
+
+All existing tests must pass. The old `live::tests` module tests (which tested health parsing) should be migrated to `live::event_parser::tests`.
+
+- [ ] **Commit**
+
+```bash
+git add -A src/models/live_events.rs src/models/mod.rs src/live/
+git rm src/live.rs
+git commit -m "feat(live): generic event system with GatewayEvent enum, parser, and split live modules"
+```
+
 ---
 
 ## Task 2: Browser Integration
@@ -690,6 +712,20 @@ let onmessage = Closure::<dyn FnMut(web_sys::MessageEvent)>::new({
 
 The `onopen` and `onerror` handlers stay exactly as they are — they continue setting `backend_state` and `live_status` directly.
 
+- [ ] **Step 4: Verify and commit**
+
+```bash
+cargo fmt --all
+cargo check
+cargo check --features server
+cargo test
+```
+
+```bash
+git add src/components/live_gateway.rs
+git commit -m "feat(live): expand LiveGatewayProvider to dispatch agent updates from GatewayEvent"
+```
+
 ---
 
 ## Task 3: Agent Updates End-to-End
@@ -755,6 +791,48 @@ In the `AgentCard` component, read from `use_live_gateway()` and render a health
 let live_state = use_live_gateway();
 let live_health = effective_health_indicator(&agent, &live_state);
 // Render a health indicator dot/badge when live_health is Some
+```
+
+- [ ] **Step 3: Run full verification and commit**
+
+```bash
+cargo fmt --all
+cargo check
+cargo check --features server
+cargo test
+cargo test --test e2e_mock_gateway
+```
+
+```bash
+git add tests/support/gateway.rs src/pages/agents.rs
+git commit -m "feat(agents): live agent health updates from gateway events"
+```
+
+---
+
+## Task 4: Refactoring Pass
+
+**Files:** All files touched in Tasks 1-3.
+
+Run the mandatory refactoring skill pass on all touched files.
+
+- [ ] **Step 1: Read and follow `skills/refactoring/SKILL.md`**
+- [ ] **Step 2: Apply refactorings to touched files**
+- [ ] **Step 3: Run full verification**
+
+```bash
+cargo fmt --all
+cargo check
+cargo check --features server
+cargo test
+cargo test --test e2e_mock_gateway
+```
+
+- [ ] **Step 4: Commit any refactoring changes**
+
+```bash
+git add -A
+git commit -m "refactor: post-implementation cleanup for generic live updates"
 ```
 
 ---
