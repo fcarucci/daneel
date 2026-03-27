@@ -13,6 +13,7 @@
 
 <!-- Agent's subjective judgments that evolve over time. Format:
 - {entities: e1} Belief text. (confidence: 0.XX, formed: YYYY-MM-DD, updated: YYYY-MM-DD) -->
+- {entities: integration-tests} The integration test suite is the most valuable automated test in the project. (confidence: 0.60, formed: 2026-03-26, updated: 2026-03-26)
 
 ## Reflections
 
