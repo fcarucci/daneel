@@ -147,24 +147,90 @@ node skills/github-admin/scripts/github-admin.mjs \
 
 ### `ready-for-merge` — PR is open, work is complete
 
+Run these steps in order. Each step is idempotent — re-running is safe.
+
+#### A. Fetch issue metadata
+
 ```bash
-# 1. Set project status
+node skills/github-admin/scripts/github-admin.mjs \
+  get-issue --number <ISSUE_NUMBER>
+```
+
+Capture the output: `labels`, `milestone.number`, `assignees`. You will
+need these values in the steps below.
+
+#### B. Set project board status
+
+```bash
 node skills/github-admin/scripts/github-admin.mjs \
   set-issue-status --issues <ISSUE_NUMBER> --status "Ready for Merge"
+```
 
-# 2. Remove blocked label if previously set (safe to fail)
+#### C. Remove `blocked` label if present (safe to fail)
+
+```bash
 node skills/github-admin/scripts/github-admin.mjs \
   label-issue --action remove --number <ISSUE_NUMBER> --label blocked \
   2>/dev/null || true
+```
 
-# 3. Link PR to issue (adds closing keyword + comment)
+#### D. Link PR to issue
+
+Adds `Closes #<ISSUE_NUMBER>` to the PR body and posts a linked-PR comment
+on the issue so the connection is visible from both sides:
+
+```bash
 node skills/github-admin/scripts/github-admin.mjs \
   link-pr-task --pr <PR_NUMBER> --issue <ISSUE_NUMBER> --close
+```
 
-# 4. Post implementation summary as an issue comment
+#### E. Mirror issue labels onto the PR
+
+GitHub does not automatically copy labels from an issue to its PR.
+Apply all labels from the issue to the PR so both show the same
+classification (component, priority, type):
+
+```bash
+node skills/github-admin/scripts/github-admin.mjs \
+  label-issue --action add --number <PR_NUMBER> \
+  --labels <COMMA_SEPARATED_ISSUE_LABELS>
+```
+
+Skip this step if the issue has no labels.
+
+#### F. Mirror issue milestone onto the PR
+
+GitHub treats PRs as issues for milestone purposes. Copy the milestone:
+
+```bash
+node skills/github-admin/scripts/github-admin.mjs \
+  update-issue --number <PR_NUMBER> --milestone <ISSUE_MILESTONE_NUMBER>
+```
+
+Skip this step if the issue has no milestone.
+
+#### G. Verify PR title references the task
+
+Read the PR title. If it does not reference the task ID or the issue
+number, post a warning comment on the PR:
+
+```bash
+node skills/github-admin/scripts/github-admin.mjs \
+  comment-issue --number <PR_NUMBER> \
+  --body "⚠️ PR title does not reference the task or issue. Consider updating it to make the connection explicit."
+```
+
+Only post this warning if the title is genuinely missing the reference.
+
+#### H. Post implementation summary on the issue
+
+```bash
 node skills/github-admin/scripts/github-admin.mjs \
   comment-issue --number <ISSUE_NUMBER> --body "<SUMMARY>"
 ```
+
+The summary should cover: what changed, how it was tested, any known
+limitations or follow-up items.
 
 ### `done` — PR merged or task closed manually
 

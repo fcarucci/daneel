@@ -41,6 +41,7 @@ Commands:
   update-issue --number <n> [--title <title>] [--body <text>] [--body-file <path>] [--state <open|closed>] [--labels <a,b,c>]
   create-issue --title <title> [--body <text>] [--body-file <path>] [--labels <a,b,c>] [--milestone <n>] [--assignees <login,login>]
   create-project --title <title> [--private] [--dry-run]   (ProjectV2 owned by GITHUB_REPOSITORY owner; public by default)
+  get-issue --number <n>
   delete-issue --number <n>
   label-issue --action <add|remove> (add: --number <n> --labels <a,b>; remove: --number <n> --label <name>)
   list-prs [--state <open|closed|all>]   (default: open)
@@ -937,6 +938,31 @@ async function listIssues(options) {
         url: issue.html_url,
         labels: (issue.labels || []).map((label) => label.name),
       })),
+      null,
+      2,
+    ),
+  );
+}
+
+async function getIssueCmd(options) {
+  const number = Number(options.number);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error("get-issue requires --number <n>.");
+  }
+  const { owner, repo } = repoParts();
+  const issue = await rest("GET", `/repos/${owner}/${repo}/issues/${number}`);
+  console.log(
+    JSON.stringify(
+      {
+        number: issue.number,
+        title: issue.title,
+        state: issue.state,
+        labels: (issue.labels || []).map((l) => l.name),
+        milestone: issue.milestone ? { number: issue.milestone.number, title: issue.milestone.title } : null,
+        assignees: (issue.assignees || []).map((a) => a.login),
+        url: issue.html_url,
+        isPullRequest: Boolean(issue.pull_request),
+      },
       null,
       2,
     ),
@@ -1942,6 +1968,7 @@ const commands = {
   "list-tasks": () => listTasks(options),
   "issue-comment": () => issueComment(options),
   "update-issue": () => updateIssue(options),
+  "get-issue": () => getIssueCmd(options),
   "delete-issue": () => deleteIssueByNumber(options),
   "label-issue": () => labelIssue(options),
   "create-issue": () => createIssue(options),

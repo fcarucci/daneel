@@ -28,6 +28,7 @@ Commands with `--action` dispatching:
 | `create-issue` | [create-issue.md](references/commands/create-issue.md) |
 | `create-project` | [create-project.md](references/commands/create-project.md) |
 | `create-pr` | [create-pr.md](references/commands/create-pr.md) |
+| `get-issue` | [get-issue.md](references/commands/get-issue.md) |
 | `delete-issue` | [delete-issue.md](references/commands/delete-issue.md) |
 | `ensure-release` | [ensure-release.md](references/commands/ensure-release.md) |
 | `label-issue` | [label-issue.md](references/commands/label-issue.md) |
