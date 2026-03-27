@@ -43,13 +43,13 @@ Skip all remaining signals.
 
 ### Signal 2 — PR closing reference
 
-If a PR number is available, inspect the PR body and title for closing
+If a PR number is available, inspect its body and title for closing
 keywords (`Closes #N`, `Fixes #N`, `Resolves #N`). Extract N and use it.
 
 ```bash
 node skills/github-admin/scripts/github-admin.mjs \
-  list-prs --state open
-# find the PR by number and read its body for #N references
+  get-issue --number <PR_NUMBER>
+# inspect the returned title and body for #N references
 ```
 
 ---
@@ -188,7 +188,8 @@ node skills/github-admin/scripts/github-admin.mjs \
 
 GitHub does not automatically copy labels from an issue to its PR.
 Apply all labels from the issue to the PR so both show the same
-classification (component, priority, type):
+classification (component, priority, type). Filter out `blocked` if it was
+present in Step A, since the PR should not be marked as blocked.
 
 ```bash
 node skills/github-admin/scripts/github-admin.mjs \
@@ -209,7 +210,18 @@ node skills/github-admin/scripts/github-admin.mjs \
 
 Skip this step if the issue has no milestone.
 
-#### G. Verify PR title references the task
+#### G. Mirror issue assignees onto the PR
+
+Copy the assignees from the issue to the PR to maintain ownership tracking:
+
+```bash
+node skills/github-admin/scripts/github-admin.mjs \
+  update-issue --number <PR_NUMBER> --assignees <COMMA_SEPARATED_ISSUE_ASSIGNEES>
+```
+
+Skip this step if the issue has no assignees.
+
+#### H. Verify PR title references the task
 
 Read the PR title. If it does not reference the task ID or the issue
 number, post a warning comment on the PR:
@@ -222,7 +234,7 @@ node skills/github-admin/scripts/github-admin.mjs \
 
 Only post this warning if the title is genuinely missing the reference.
 
-#### H. Post implementation summary on the issue
+#### I. Post implementation summary on the issue
 
 ```bash
 node skills/github-admin/scripts/github-admin.mjs \

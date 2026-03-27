@@ -38,7 +38,7 @@ Commands:
   list-issues [--state <open|closed|all>] [--title-prefix <text>] [--title-contains <text>] [--limit <n>]
   list-tasks [--limit <n>]
   issue-comment --action <list|delete> (list: --issue <n>; delete: --comment-id <n>)
-  update-issue --number <n> [--title <title>] [--body <text>] [--body-file <path>] [--state <open|closed>] [--labels <a,b,c>]
+  update-issue --number <n> [--title <title>] [--body <text>] [--body-file <path>] [--state <open|closed>] [--labels <a,b,c>] [--assignees <login,login>]
   create-issue --title <title> [--body <text>] [--body-file <path>] [--labels <a,b,c>] [--milestone <n>] [--assignees <login,login>]
   create-project --title <title> [--private] [--dry-run]   (ProjectV2 owned by GITHUB_REPOSITORY owner; public by default)
   get-issue --number <n>
@@ -956,6 +956,7 @@ async function getIssueCmd(options) {
       {
         number: issue.number,
         title: issue.title,
+        body: issue.body,
         state: issue.state,
         labels: (issue.labels || []).map((l) => l.name),
         milestone: issue.milestone ? { number: issue.milestone.number, title: issue.milestone.title } : null,
@@ -1652,10 +1653,16 @@ async function updateIssue(options) {
       .map((label) => label.trim())
       .filter(Boolean);
   }
+  if (options.assignees) {
+    patch.assignees = String(options.assignees)
+      .split(",")
+      .map((assignee) => assignee.trim())
+      .filter(Boolean);
+  }
 
   if (Object.keys(patch).length === 0) {
     throw new Error(
-      "update-issue requires at least one of --title, --body, --body-file, --state, or --labels.",
+      "update-issue requires at least one of --title, --body, --body-file, --state, --labels, or --assignees.",
     );
   }
 
