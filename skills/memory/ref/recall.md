@@ -6,12 +6,12 @@ Produces a compact, context-ready digest of memories. No subagent
 is needed — the calling agent runs the command directly.
 
 ```bash
-python3 scripts/memory-recall.py --show                # both scopes (default)
-python3 scripts/memory-recall.py --show --scope user   # user only
-python3 scripts/memory-recall.py --show --scope project # project only
-python3 scripts/memory-recall.py --show --last 10      # last 10 experiences
-python3 scripts/memory-recall.py --show --days 7       # last 7 days
-python3 scripts/memory-recall.py --show --last 999     # all experiences
+python3 skills/memory/scripts/memory-recall.py --show                # both scopes (default)
+python3 skills/memory/scripts/memory-recall.py --show --scope user   # user only
+python3 skills/memory/scripts/memory-recall.py --show --scope project # project only
+python3 skills/memory/scripts/memory-recall.py --show --last 10      # last 10 experiences
+python3 skills/memory/scripts/memory-recall.py --show --days 7       # last 7 days
+python3 skills/memory/scripts/memory-recall.py --show --last 999     # all experiences
 ```
 
 The digest contains, for each scope with content:
@@ -29,14 +29,17 @@ Recall searches **both** user and project memory by default, tagging
 results with `[user]` or `[project]` so the caller knows the source.
 
 ```bash
-python3 scripts/memory-recall.py --keyword "database" --json
-python3 scripts/memory-recall.py --keyword "database" --scope user --json
-python3 scripts/memory-recall.py --keyword "database" --scope project --json
-python3 scripts/memory-recall.py --entity "api-gateway" --cross-section --json
-python3 scripts/memory-recall.py --since 2026-03-01 --until 2026-03-31 --json
-python3 scripts/memory-recall.py --section beliefs --keyword "reliable" --json
-python3 scripts/memory-recall.py --stats
-python3 scripts/memory-recall.py --stats --scope user
+python3 skills/memory/scripts/memory-recall.py --keyword "database" --json
+python3 skills/memory/scripts/memory-recall.py --keyword "database" --scope user --json
+python3 skills/memory/scripts/memory-recall.py --keyword "database" --scope project --json
+python3 skills/memory/scripts/memory-recall.py --entity "api-gateway" --cross-section --json
+python3 skills/memory/scripts/memory-recall.py --since 2026-03-01 --until 2026-03-31 --json
+python3 skills/memory/scripts/memory-recall.py --section beliefs --keyword "reliable" --json
+python3 skills/memory/scripts/memory-recall.py --stats
+python3 skills/memory/scripts/memory-recall.py --stats --scope user
+
+# Token-budgeted recall (approx tokens, prioritizes world knowledge > beliefs > reflections > experiences):
+python3 skills/memory/scripts/memory-recall.py --keyword "database" --budget 500 --json
 ```
 
 When to use recall vs. full read:

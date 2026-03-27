@@ -14,6 +14,11 @@
 <!-- Agent's subjective judgments that evolve over time. Format:
 - {entities: e1} Belief text. (confidence: 0.XX, formed: YYYY-MM-DD, updated: YYYY-MM-DD) -->
 
+## Reflections
+
+<!-- Higher-level patterns synthesized from multiple experiences and beliefs. Format:
+- **YYYY-MM-DD** {entities: e1, e2} Reflection text. -->
+
 ## Entity Summaries
 
 <!-- Synthesized profiles of key entities, regenerated when underlying memories change. Format:

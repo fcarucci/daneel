@@ -11,20 +11,23 @@ Non-negotiable:
 
 1. **Read before write.** Always read `MEMORY.md` in full before planning
    changes.
-2. **Single final write.** Do not write partial state. Compute the final
+2. **Use the guarded writer.** Prefer `python3 skills/memory/scripts/memory-manage.py append-entry`
+   over manual edits so secret screening, duplicate checks, entity
+   canonicalization, and optimistic concurrency checks are enforced.
+3. **Single final write.** Do not write partial state. Compute the final
    target content first, then write once.
-3. **Re-read before write.** Immediately before writing, read `MEMORY.md`
+4. **Re-read before write.** Immediately before writing, read `MEMORY.md`
    again. If it changed since the first read, merge against the latest
    state and recompute.
-4. **No side effects.** Do not edit `AGENTS.md`, code, config, or any
+5. **No side effects.** Do not edit `AGENTS.md`, code, config, or any
    other file. Report drift in the subagent output instead.
-5. **Preserve structure.** Never remove or rename section headers or HTML
+6. **Preserve structure.** Never remove or rename section headers or HTML
    comments.
-6. **Idempotent reruns.** Running the skill twice with the same input must
+7. **Idempotent reruns.** Running the skill twice with the same input must
    produce the same file.
-7. **Fail closed.** If you cannot safely determine the correct final state,
+8. **Fail closed.** If you cannot safely determine the correct final state,
    stop and report a blocked result.
-8. **World knowledge is verified only.** The World Knowledge section never
+9. **World knowledge is verified only.** The World Knowledge section never
    contains guesses, placeholders, or `[unverified]` entries.
 
 ## Sensitive data policy
@@ -50,30 +53,45 @@ New memories go to **user** scope by default. Only use project scope when:
 
 To initialize user memory on first use:
 ```bash
-python3 scripts/memory-manage.py init-user
+python3 skills/memory/scripts/memory-manage.py init-user
 ```
 
 ## Workflow
 
 1. Ensure user memory exists (`init-user` if needed).
 2. Read and parse the target `MEMORY.md` (user scope by default).
-3. Validate structure (run `python3 scripts/memory-manage.py validate --scope user`).
-4. Sanitize the incoming `content` per the sensitive data policy.
+3. Validate structure (run `python3 skills/memory/scripts/memory-manage.py validate --scope user`).
+4. Screen the incoming `content` before any write:
+   ```bash
+   python3 skills/memory/scripts/memory-manage.py screen-text --text "the memory text"
+   ```
+   If the result is unsafe, store only a sanitized lesson or stop.
 5. **Classify** the memory into the correct network:
    - Is it something that happened to/around the agent? → **Experience**
    - Is it an objective, verifiable fact about the project? → **World Knowledge**
    - Is it the agent's subjective judgment or preference? → **Belief**
 6. **Extract entities** using the script:
    ```bash
-   python3 scripts/memory-manage.py extract-entities --text "the memory text"
+   python3 skills/memory/scripts/memory-manage.py extract-entities --text "the memory text"
    ```
    Review the candidates and finalize the entity set.
 7. **Check for duplicates** across both scopes:
    ```bash
-   python3 scripts/memory-manage.py check-duplicate --section experiences --candidate "the memory text" --cross-scope
+   python3 skills/memory/scripts/memory-manage.py check-duplicate --section experiences --candidate "the memory text" --cross-scope
    ```
    If a clear duplicate exists in either scope, do not add a new entry.
-8. Format the entry per the section's format rules (see `ref/format.md`).
+8. Write the final entry via the guarded command:
+   ```bash
+   python3 skills/memory/scripts/memory-manage.py append-entry \
+     --section experiences \
+     --scope user \
+     --date 2026-03-27 \
+     --context testing \
+     --entities "integration-tests,port-5432" \
+     --text "the memory text"
+   ```
+   For world knowledge, also pass `--confidence` and `--sources`.
+   For beliefs, also pass `--confidence` and optionally `--formed` / `--updated`.
 9. For new beliefs, set initial confidence based on evidence strength:
    - `0.4–0.5`: tentative, based on a single observation
    - `0.6–0.7`: moderate, based on 2+ observations
@@ -81,15 +99,14 @@ python3 scripts/memory-manage.py init-user
 10. **Reflect**: check whether the new memory reinforces or contradicts
     any existing beliefs. If so, update confidence scores:
     ```bash
-    python3 scripts/memory-manage.py update-confidence --section beliefs --index N --delta 0.1 --scope user
+    python3 skills/memory/scripts/memory-manage.py update-confidence --section beliefs --index N --delta 0.1 --scope user
     ```
     Use `+0.1` for reinforcement, `-0.1` for weakening, `-0.2` for
     strong contradiction. Beliefs below `0.2` are pruning candidates.
 11. Check if any entity now has 3+ mentions and lacks a summary. If so,
     write a new entity summary.
-12. Render the final `MEMORY.md`, re-read, merge if needed, write once.
-13. Verify the written file matches the plan.
-14. **Auto-reflect check** (see below).
+12. Verify the written file matches the plan.
+13. **Auto-reflect check** (see below).
 
 ## Classification guide
 
@@ -126,7 +143,7 @@ Before comparing, pruning, or writing memories, normalize using:
 For deterministic duplicate detection, use the script:
 
 ```bash
-python3 scripts/memory-manage.py check-duplicate --section experiences --candidate "text"
+python3 skills/memory/scripts/memory-manage.py check-duplicate --section experiences --candidate "text"
 ```
 
 The script uses three complementary similarity metrics (sequence ratio,
@@ -154,8 +171,8 @@ without requiring the caller to explicitly schedule reflection.
 After completing the retain write, run:
 
 ```bash
-python3 scripts/memory-manage.py prune-beliefs --threshold 0.3
-python3 scripts/memory-manage.py suggest-summaries
+python3 skills/memory/scripts/memory-manage.py prune-beliefs --threshold 0.3
+python3 skills/memory/scripts/memory-manage.py suggest-summaries
 ```
 
 Inspect the belief `updated` dates from the file you just wrote.
@@ -192,5 +209,5 @@ At the end of the run, report:
 - **Recoverable format issue**: repair if you can preserve all existing content.
 - **Unrecoverable format issue**: stop and report blocked.
 - **Sensitive data in existing memory**: redact if possible, otherwise remove and report.
-- **Ambiguous duplicate**: keep both and report the ambiguity.
+- **Ambiguous duplicate**: stop and report the ambiguity; do not bypass the guarded write path.
 - **Script not found**: fall back to manual parsing but warn that deterministic operations are degraded.

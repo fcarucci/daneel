@@ -42,6 +42,13 @@ SAMPLE_MEMORY = """\
 - {entities: dev-command, dev-server} Running the combined dev command is more reliable than starting the server alone for day-to-day development. (confidence: 0.70, formed: 2026-03-15, updated: 2026-03-20)
 - {entities: integration-tests} The integration test suite is the most valuable automated test in the project. (confidence: 0.60, formed: 2026-03-26, updated: 2026-03-26)
 
+## Reflections
+
+<!-- Higher-level patterns synthesized from multiple experiences and beliefs. Format:
+- **YYYY-MM-DD** {entities: e1, e2} Reflection text. -->
+
+- **2026-03-26** {entities: dev-server, integration-tests, port-5432} Multiple debugging sessions revealed that the dev environment does not clean up child processes on exit, causing port conflicts across unrelated tools. This is a systemic issue, not isolated incidents.
+
 ## Entity Summaries
 
 <!-- Synthesized profiles of key entities, regenerated when underlying memories change. Format:
@@ -171,8 +178,9 @@ class TestStats(unittest.TestCase):
         self.assertEqual(s["counts"]["experiences"], 4)
         self.assertEqual(s["counts"]["world_knowledge"], 3)
         self.assertEqual(s["counts"]["beliefs"], 2)
+        self.assertEqual(s["counts"]["reflections"], 1)
         self.assertEqual(s["counts"]["entity_summaries"], 2)
-        self.assertEqual(s["counts"]["total"], 11)
+        self.assertEqual(s["counts"]["total"], 12)
 
     def test_entity_index(self):
         s = recall.stats(self.bank)
@@ -293,20 +301,19 @@ class TestConfidenceUpdate(unittest.TestCase):
 
 
 class TestEntityExtraction(unittest.TestCase):
-    def test_backtick_entities(self):
+    def test_backtick_entities_are_canonicalized(self):
         result = manage.extract_entities(
-            "The `docker compose` command and `Redis CLI` run together via `npm run build`"
+            "The `docker compose` command and `Redis CLI` work together"
         )
-        self.assertIn("docker compose", result["candidates"])
-        self.assertIn("Redis CLI", result["candidates"])
-        self.assertIn("npm run build", result["candidates"])
+        self.assertIn("docker-compose", result["candidates"])
+        self.assertIn("redis-cli", result["candidates"])
 
-    def test_pascal_case(self):
+    def test_pascal_case_is_canonicalized(self):
         result = manage.extract_entities(
             "The FastAPI gateway connects to SQLAlchemy server functions"
         )
-        self.assertIn("FastAPI", result["candidates"])
-        self.assertIn("SQLAlchemy", result["candidates"])
+        self.assertIn("fastapi", result["candidates"])
+        self.assertIn("sqlalchemy", result["candidates"])
 
     def test_hyphenated(self):
         result = manage.extract_entities(
@@ -315,9 +322,83 @@ class TestEntityExtraction(unittest.TestCase):
         self.assertIn("e2e-test-runner", result["candidates"])
         self.assertIn("port-5432", result["candidates"])
 
+    def test_common_lowercase_tech_terms(self):
+        result = manage.extract_entities(
+            "The postgres adapter connects to redis and docker"
+        )
+        self.assertIn("postgresql", result["candidates"])
+        self.assertIn("redis", result["candidates"])
+        self.assertIn("docker", result["candidates"])
+
     def test_empty_input(self):
         result = manage.extract_entities("")
         self.assertEqual(result["count"], 0)
+
+
+class TestSensitiveScreening(unittest.TestCase):
+    def test_detects_secret_assignment(self):
+        result = manage.screen_text(
+            "The database password is hunter2 and should not be stored."
+        )
+        self.assertFalse(result["safe"])
+        self.assertTrue(result["issues"])
+        self.assertNotIn("hunter2", result["sanitized_text"])
+
+
+class TestAtomicWriteGuard(unittest.TestCase):
+    def test_write_text_if_unchanged_rejects_stale_hash(self):
+        tmp = Path(tempfile.mkdtemp())
+        path = tmp / "MEMORY.md"
+        path.write_text("# Agent Memory\n", encoding="utf-8")
+        expected_hash = manage.content_hash(path.read_text(encoding="utf-8"))
+
+        path.write_text("# Agent Memory\n\nchanged\n", encoding="utf-8")
+
+        result = manage.write_text_if_unchanged(
+            path,
+            "# Agent Memory\n\nreplacement\n",
+            expected_hash,
+        )
+
+        self.assertFalse(result["success"])
+        self.assertIn("stale", result["error"])
+        self.assertIn("changed", path.read_text(encoding="utf-8"))
+
+
+class TestAppendEntry(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.path = _write_sample(self.tmp)
+
+    def test_append_entry_rejects_sensitive_text(self):
+        result = manage.append_entry(
+            self.path,
+            section="experiences",
+            text="The API token is sk_live_123456 and must not be persisted.",
+            scope_label="user",
+            date="2026-03-27",
+            context="debug",
+            entities=["stripe"],
+        )
+        self.assertFalse(result["success"])
+        self.assertIn("sensitive", result["error"].lower())
+
+    def test_append_entry_normalizes_context_and_entities(self):
+        result = manage.append_entry(
+            self.path,
+            section="experiences",
+            text="The Postgres adapter connects to redis and docker.",
+            scope_label="user",
+            date="2026-03-27",
+            context="debugging",
+            entities=["Postgres", "Redis CLI", "docker"],
+        )
+        self.assertTrue(result["success"])
+
+        bank = recall.parse_memory_file(self.path)
+        exp = bank.experiences[0]
+        self.assertEqual(exp.context, "debug")
+        self.assertEqual(exp.entities, ["docker", "postgresql", "redis-cli"])
 
 
 class TestPruneBeliefs(unittest.TestCase):
@@ -492,24 +573,48 @@ class TestPromote(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.project_path, self.user_path = _write_both(self.tmp)
 
-    def test_promote_experience(self):
-        result = manage.promote(self.user_path, self.project_path, "experiences", 0)
-        self.assertTrue(result["success"])
-        self.assertIn("vim", result["promoted_text"])
+    def test_promote_requires_explicit_approval_flag(self):
+        result = manage.promote(
+            self.user_path,
+            self.project_path,
+            "world_knowledge",
+            0,
+            allow_project_promotion=False,
+        )
+        self.assertFalse(result["success"])
+        self.assertIn("allow-project-promotion", result["error"])
 
-        project_bank = recall.parse_memory_file(self.project_path)
-        self.assertEqual(len(project_bank.experiences), 5)
-        vim_exps = [e for e in project_bank.experiences if "vim" in e.text]
-        self.assertEqual(len(vim_exps), 1)
+    def test_promote_preference_experience_blocked(self):
+        result = manage.promote(
+            self.user_path,
+            self.project_path,
+            "experiences",
+            0,
+            allow_project_promotion=True,
+        )
+        self.assertFalse(result["success"])
+        self.assertIn("preference", result["error"])
 
     def test_promote_world_knowledge(self):
-        result = manage.promote(self.user_path, self.project_path, "world_knowledge", 0)
+        result = manage.promote(
+            self.user_path,
+            self.project_path,
+            "world_knowledge",
+            0,
+            allow_project_promotion=True,
+        )
         self.assertTrue(result["success"])
         project_bank = recall.parse_memory_file(self.project_path)
         self.assertEqual(len(project_bank.world_knowledge), 4)
 
     def test_promote_belief(self):
-        result = manage.promote(self.user_path, self.project_path, "beliefs", 0)
+        result = manage.promote(
+            self.user_path,
+            self.project_path,
+            "beliefs",
+            0,
+            allow_project_promotion=True,
+        )
         self.assertTrue(result["success"])
         project_bank = recall.parse_memory_file(self.project_path)
         self.assertEqual(len(project_bank.beliefs), 3)
@@ -522,16 +627,34 @@ class TestPromote(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        result = manage.promote(self.user_path, self.project_path, "experiences", 0)
+        result = manage.promote(
+            self.user_path,
+            self.project_path,
+            "experiences",
+            0,
+            allow_project_promotion=True,
+        )
         self.assertFalse(result["success"])
         self.assertIn("Duplicate", result["error"])
 
     def test_promote_invalid_index(self):
-        result = manage.promote(self.user_path, self.project_path, "experiences", 99)
+        result = manage.promote(
+            self.user_path,
+            self.project_path,
+            "experiences",
+            99,
+            allow_project_promotion=True,
+        )
         self.assertFalse(result["success"])
 
     def test_promote_invalid_section(self):
-        result = manage.promote(self.user_path, self.project_path, "entity_summaries", 0)
+        result = manage.promote(
+            self.user_path,
+            self.project_path,
+            "entity_summaries",
+            0,
+            allow_project_promotion=True,
+        )
         self.assertFalse(result["success"])
 
 
@@ -566,17 +689,20 @@ class TestDigest(unittest.TestCase):
 
     def test_digest_last_limits_experiences(self):
         output = recall.digest([("project", self.project_bank)], last=2)
-        lines = [l for l in output.splitlines() if l.startswith("- 2026-")]
+        section = output.split("**Recent Experiences")[-1] if "**Recent Experiences" in output else ""
+        lines = [l for l in section.splitlines() if l.startswith("- 2026-")]
         self.assertEqual(len(lines), 2)
 
     def test_digest_last_all(self):
         output = recall.digest([("project", self.project_bank)], last=100)
-        lines = [l for l in output.splitlines() if l.startswith("- 2026-")]
+        section = output.split("**Recent Experiences")[-1] if "**Recent Experiences" in output else ""
+        lines = [l for l in section.splitlines() if l.startswith("- 2026-")]
         self.assertEqual(len(lines), 4)
 
     def test_digest_days_filter(self):
         output = recall.digest([("project", self.project_bank)], days=7)
-        exp_lines = [l for l in output.splitlines() if l.startswith("- 2026-")]
+        section = output.split("**Recent Experiences")[-1] if "**Recent Experiences" in output else ""
+        exp_lines = [l for l in section.splitlines() if l.startswith("- 2026-")]
         self.assertTrue(len(exp_lines) <= 2)
         for line in exp_lines:
             self.assertNotIn("2026-02-10", line)
@@ -607,6 +733,115 @@ class TestDigest(unittest.TestCase):
         self.assertEqual(output, "(no memories found)")
 
 
+CONFLICT_MEMORY = """\
+# Agent Memory
+
+## Experiences
+
+<!-- comment -->
+
+## World Knowledge
+
+<!-- comment -->
+
+## Beliefs
+
+<!-- comment -->
+
+- {entities: dev-server} The dev server is reliable and stable for daily use. (confidence: 0.70, formed: 2026-03-10, updated: 2026-03-20)
+- {entities: dev-server} The dev server is unreliable and frequently fails under load. (confidence: 0.50, formed: 2026-03-15, updated: 2026-03-22)
+- {entities: ci-pipeline} The CI pipeline is the best safeguard against regressions. (confidence: 0.80, formed: 2026-03-01, updated: 2026-03-25)
+
+## Reflections
+
+<!-- comment -->
+
+## Entity Summaries
+
+<!-- comment -->
+"""
+
+
+class TestReflectionParsing(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.path = _write_sample(self.tmp)
+        self.bank = recall.parse_memory_file(self.path)
+
+    def test_reflection_count(self):
+        self.assertEqual(len(self.bank.reflections), 1)
+
+    def test_reflection_fields(self):
+        r = self.bank.reflections[0]
+        self.assertEqual(r.date, "2026-03-26")
+        self.assertIn("dev-server", r.entities)
+        self.assertIn("integration-tests", r.entities)
+        self.assertIn("port-5432", r.entities)
+        self.assertIn("child processes", r.text)
+
+    def test_reflection_in_recall(self):
+        result = recall.recall(self.bank, keyword="child processes")
+        self.assertIn("reflections", result)
+        self.assertEqual(len(result["reflections"]), 1)
+
+    def test_reflection_entity_recall(self):
+        result = recall.recall(self.bank, entity="dev-server", cross_section=True)
+        self.assertIn("reflections", result)
+
+    def test_reflection_in_stats(self):
+        s = recall.stats(self.bank)
+        self.assertEqual(s["counts"]["reflections"], 1)
+        self.assertEqual(s["counts"]["total"], 12)  # 4+3+2+1+2
+
+    def test_reflection_in_digest(self):
+        output = recall.digest([("project", self.bank)])
+        self.assertIn("Reflections", output)
+        self.assertIn("child processes", output)
+
+    def test_reflection_in_entity_index(self):
+        entities = recall.collect_all_entities(self.bank)
+        self.assertIn("reflections", entities.get("dev-server", []))
+
+
+class TestCheckConflicts(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.path = self.tmp / "MEMORY.md"
+        self.path.write_text(CONFLICT_MEMORY, encoding="utf-8")
+
+    def test_detects_conflict(self):
+        result = manage.check_conflicts(self.path)
+        self.assertGreaterEqual(result["conflict_count"], 1)
+        conflict = result["conflicts"][0]
+        self.assertIn("dev-server", conflict["shared_entities"])
+
+    def test_conflict_recommendation(self):
+        result = manage.check_conflicts(self.path)
+        conflict = result["conflicts"][0]
+        self.assertIn("keep index", conflict["recommendation"])
+
+    def test_no_conflict_between_unrelated(self):
+        result = manage.check_conflicts(self.path)
+        for c in result["conflicts"]:
+            self.assertNotIn("ci-pipeline", c["shared_entities"])
+
+    def test_no_conflicts_when_empty(self):
+        p = self.tmp / "empty.md"
+        p.write_text(
+            "# Agent Memory\n\n## Experiences\n\n<!-- c -->\n\n"
+            "## World Knowledge\n\n<!-- c -->\n\n"
+            "## Beliefs\n\n<!-- c -->\n\n"
+            "## Reflections\n\n<!-- c -->\n\n"
+            "## Entity Summaries\n\n<!-- c -->\n"
+        )
+        result = manage.check_conflicts(p)
+        self.assertEqual(result["conflict_count"], 0)
+
+    def test_total_beliefs_reported(self):
+        result = manage.check_conflicts(self.path)
+        self.assertEqual(result["total_beliefs"], 3)
+
+
 class TestEmptyMemory(unittest.TestCase):
     def test_empty_template(self):
         tmp = Path(tempfile.mkdtemp())
@@ -619,6 +854,8 @@ class TestEmptyMemory(unittest.TestCase):
             "<!-- comment -->\n\n"
             "## Beliefs\n\n"
             "<!-- comment -->\n\n"
+            "## Reflections\n\n"
+            "<!-- comment -->\n\n"
             "## Entity Summaries\n\n"
             "<!-- comment -->\n"
         )
@@ -626,9 +863,197 @@ class TestEmptyMemory(unittest.TestCase):
         self.assertEqual(len(bank.experiences), 0)
         self.assertEqual(len(bank.world_knowledge), 0)
         self.assertEqual(len(bank.beliefs), 0)
+        self.assertEqual(len(bank.reflections), 0)
         self.assertEqual(len(bank.entity_summaries), 0)
 
         result = manage.validate(p)
+        self.assertTrue(result["valid"])
+
+
+CAUSAL_MEMORY = """\
+# Agent Memory
+
+## Experiences
+
+<!-- comment -->
+
+- **2026-03-26** [debug] {entities: build-watcher, port-5432} {causes: dev-server} The build watcher left a child process bound to port 5432, which crashed the dev server on next startup.
+- **2026-03-25** [debug] {entities: dev-server} {caused-by: build-watcher} The dev server failed to start because port 5432 was already bound by a stale build-watcher child process.
+- **2026-03-20** [tooling] {entities: config-loader} {enables: api-gateway} The config loader now validates all fields at startup, which enables the API gateway to start reliably.
+
+## World Knowledge
+
+<!-- comment -->
+
+## Beliefs
+
+<!-- comment -->
+
+## Reflections
+
+<!-- comment -->
+
+## Entity Summaries
+
+<!-- comment -->
+"""
+
+
+class TestCausalLinks(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.path = self.tmp / "MEMORY.md"
+        self.path.write_text(CAUSAL_MEMORY, encoding="utf-8")
+        self.bank = recall.parse_memory_file(self.path)
+
+    def test_causal_links_parsed(self):
+        exp = self.bank.experiences[0]
+        self.assertEqual(len(exp.causal_links), 1)
+        self.assertEqual(exp.causal_links[0].relation, "causes")
+        self.assertEqual(exp.causal_links[0].target, "dev-server")
+
+    def test_caused_by_parsed(self):
+        exp = self.bank.experiences[1]
+        self.assertEqual(len(exp.causal_links), 1)
+        self.assertEqual(exp.causal_links[0].relation, "caused-by")
+        self.assertEqual(exp.causal_links[0].target, "build-watcher")
+
+    def test_enables_parsed(self):
+        exp = self.bank.experiences[2]
+        self.assertEqual(exp.causal_links[0].relation, "enables")
+        self.assertEqual(exp.causal_links[0].target, "api-gateway")
+
+    def test_causal_tags_stripped_from_text(self):
+        exp = self.bank.experiences[0]
+        self.assertNotIn("{causes:", exp.text)
+        self.assertIn("child process", exp.text)
+
+    def test_no_causal_links_when_absent(self):
+        bank = recall.parse_memory_file(
+            _write_sample(Path(tempfile.mkdtemp()))
+        )
+        for exp in bank.experiences:
+            self.assertEqual(len(exp.causal_links), 0)
+
+    def test_causal_keyword_search(self):
+        result = recall.recall(self.bank, keyword="causes:")
+        self.assertIn("experiences", result)
+
+
+class TestTokenBudget(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.path = _write_sample(self.tmp)
+        self.bank = recall.parse_memory_file(self.path)
+
+    def test_budget_limits_results(self):
+        all_results = recall.recall(self.bank, keyword=" ")
+        total_chars = sum(len(item) for items in all_results.values() for item in items)
+        budget_tokens = total_chars // 8
+        limited = recall.recall(self.bank, keyword=" ", budget=budget_tokens)
+        limited_chars = sum(len(item) for items in limited.values() for item in items)
+        self.assertLess(limited_chars, total_chars)
+
+    def test_budget_none_returns_all(self):
+        result = recall.recall(self.bank, keyword=" ", budget=None)
+        total = sum(len(items) for items in result.values())
+        self.assertGreater(total, 0)
+
+    def test_budget_zero_returns_empty(self):
+        result = recall.recall(self.bank, keyword=" ", budget=0)
+        self.assertEqual(len(result), 0)
+
+    def test_budget_large_returns_all(self):
+        all_results = recall.recall(self.bank, keyword=" ")
+        large = recall.recall(self.bank, keyword=" ", budget=999999)
+        self.assertEqual(
+            sum(len(v) for v in all_results.values()),
+            sum(len(v) for v in large.values()),
+        )
+
+    def test_budget_prioritizes_world_knowledge(self):
+        result = recall.recall(self.bank, keyword=" ", budget=50)
+        if result:
+            first_section = list(result.keys())[0]
+            self.assertEqual(first_section, "world_knowledge")
+
+
+class TestFindMatches(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.path = _write_sample(self.tmp)
+
+    def test_finds_matching_experience(self):
+        result = manage.find_matches(self.path, "integration test hung port")
+        self.assertGreater(result["match_count"], 0)
+        self.assertEqual(result["matches"][0]["section"], "experiences")
+
+    def test_finds_matching_belief(self):
+        result = manage.find_matches(self.path, "dev command reliable")
+        found_belief = any(m["section"] == "beliefs" for m in result["matches"])
+        self.assertTrue(found_belief)
+
+    def test_no_matches_for_unrelated(self):
+        result = manage.find_matches(self.path, "quantum entanglement physics")
+        self.assertEqual(result["match_count"], 0)
+
+    def test_low_threshold_finds_more(self):
+        strict = manage.find_matches(self.path, "server", threshold=0.8)
+        loose = manage.find_matches(self.path, "server", threshold=0.2)
+        self.assertGreaterEqual(loose["match_count"], strict["match_count"])
+
+    def test_matches_include_metadata(self):
+        result = manage.find_matches(self.path, "integration test hung")
+        if result["matches"]:
+            m = result["matches"][0]
+            self.assertIn("section", m)
+            self.assertIn("index", m)
+            self.assertIn("similarity", m)
+            self.assertIn("text", m)
+            self.assertIn("raw", m)
+
+
+class TestDeleteEntry(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.path = _write_sample(self.tmp)
+
+    def test_delete_experience(self):
+        bank_before = recall.parse_memory_file(self.path)
+        count_before = len(bank_before.experiences)
+        result = manage.delete_entry(self.path, "experiences", 0)
+        self.assertTrue(result["success"])
+        self.assertIn("deleted", result)
+        bank_after = recall.parse_memory_file(self.path)
+        self.assertEqual(len(bank_after.experiences), count_before - 1)
+
+    def test_delete_belief(self):
+        bank_before = recall.parse_memory_file(self.path)
+        count_before = len(bank_before.beliefs)
+        result = manage.delete_entry(self.path, "beliefs", 0)
+        self.assertTrue(result["success"])
+        bank_after = recall.parse_memory_file(self.path)
+        self.assertEqual(len(bank_after.beliefs), count_before - 1)
+
+    def test_delete_invalid_index(self):
+        result = manage.delete_entry(self.path, "experiences", 99)
+        self.assertFalse(result["success"])
+
+    def test_delete_invalid_section(self):
+        result = manage.delete_entry(self.path, "entity_summaries", 0)
+        self.assertFalse(result["success"])
+
+    def test_delete_nonexistent_file(self):
+        result = manage.delete_entry(self.tmp / "nope.md", "experiences", 0)
+        self.assertFalse(result["success"])
+
+    def test_delete_last_entry_leaves_section_intact(self):
+        bank = recall.parse_memory_file(self.path)
+        for i in range(len(bank.experiences) - 1, -1, -1):
+            manage.delete_entry(self.path, "experiences", i)
+        bank_after = recall.parse_memory_file(self.path)
+        self.assertEqual(len(bank_after.experiences), 0)
+        result = manage.validate(self.path)
         self.assertTrue(result["valid"])
 
 

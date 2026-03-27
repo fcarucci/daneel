@@ -74,8 +74,10 @@ When Francesco asks to complete a task in Daneel, ALWAYS follow this exact proce
      2. run the **dedicated** refactoring pass (`refactoring` skill)
      3. rerun fmt + unit + integration after the refactor
      4. run visual acceptance verification last
-     5. only then commit or push
+     5. **post-task memory sweep**: ask "what did I learn?" and spawn a memory subagent for each lesson (see `skills/memory/SKILL.md`, "Automatic memory capture")
+     6. only then commit or push
    - Opportunistic cleanup during implementation does **not** count as the refactoring pass
+   - The memory sweep is **not** optional — it runs after every task, like the refactoring pass
    - Visual acceptance verification must happen after the post-refactor automated re-check, not before
 5. **Rebase onto main before pushing:**
    - `git fetch origin && git rebase origin/main`

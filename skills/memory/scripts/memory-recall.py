@@ -2,20 +2,20 @@
 """Structured recall over MEMORY.md (user and project scopes).
 
 Supports two memory tiers:
-  - User memory:    ~/.config/daneel/MEMORY.md  (personal, default)
+  - User memory:    ~/.agents/memory/MEMORY.md  (personal, default)
   - Project memory: <repo>/MEMORY.md            (shared, committed)
 
 Recall searches both by default. Results are tagged with their source
 scope so the caller can distinguish personal from shared memories.
 
 Usage:
-    python scripts/memory-recall.py --keyword "gateway"
-    python scripts/memory-recall.py --entity "dx-serve" --scope user
-    python scripts/memory-recall.py --scope project --stats
-    python scripts/memory-recall.py --since 2026-03-01 --until 2026-03-31
-    python scripts/memory-recall.py --section experiences --keyword "debug"
-    python scripts/memory-recall.py --entity "tailwind" --cross-section
-    python scripts/memory-recall.py --stats
+    python skills/memory/scripts/memory-recall.py --keyword "gateway"
+    python skills/memory/scripts/memory-recall.py --entity "dx-serve" --scope user
+    python skills/memory/scripts/memory-recall.py --scope project --stats
+    python skills/memory/scripts/memory-recall.py --since 2026-03-01 --until 2026-03-31
+    python skills/memory/scripts/memory-recall.py --section experiences --keyword "debug"
+    python skills/memory/scripts/memory-recall.py --entity "tailwind" --cross-section
+    python skills/memory/scripts/memory-recall.py --stats
 """
 
 import argparse
@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Optional
 
 
-PROJECT_MEMORY_PATH = Path(__file__).resolve().parent.parent / "MEMORY.md"
+PROJECT_MEMORY_PATH = Path(__file__).resolve().parent.parent.parent.parent / "MEMORY.md"
 USER_MEMORY_DIR = Path.home() / ".agents" / "memory"
 USER_MEMORY_PATH = USER_MEMORY_DIR / "MEMORY.md"
 
@@ -52,6 +52,11 @@ USER_MEMORY_TEMPLATE = """\
 
 <!-- Agent's subjective judgments that evolve over time. Format:
 - {entities: e1} Belief text. (confidence: 0.XX, formed: YYYY-MM-DD, updated: YYYY-MM-DD) -->
+
+## Reflections
+
+<!-- Higher-level patterns synthesized from multiple experiences and beliefs. Format:
+- **YYYY-MM-DD** {entities: e1, e2} Reflection text. -->
 
 ## Entity Summaries
 
@@ -78,7 +83,7 @@ def ensure_user_memory() -> Path:
         USER_MEMORY_PATH.write_text(USER_MEMORY_TEMPLATE, encoding="utf-8")
     return USER_MEMORY_PATH
 
-SECTION_NAMES = ("experiences", "world_knowledge", "beliefs", "entity_summaries")
+SECTION_NAMES = ("experiences", "world_knowledge", "beliefs", "reflections", "entity_summaries")
 
 ENTITY_RE = re.compile(r"\{entities:\s*([^}]+)\}")
 DATE_RE = re.compile(r"\*\*(\d{4}-\d{2}-\d{2})\*\*")
@@ -87,14 +92,21 @@ SOURCES_RE = re.compile(r"sources:\s*(\d+)\)")
 FORMED_RE = re.compile(r"formed:\s*(\d{4}-\d{2}-\d{2})")
 UPDATED_RE = re.compile(r"updated:\s*(\d{4}-\d{2}-\d{2})")
 CONTEXT_RE = re.compile(r"\[(\w[\w-]*)\]")
+CAUSAL_RE = re.compile(r"\{(causes|caused-by|enables|prevents):\s*([^}]+)\}")
 SUMMARY_HEADING_RE = re.compile(r"^###\s+(.+)$")
 
+
+@dataclass
+class CausalLink:
+    relation: str  # causes, caused-by, enables, prevents
+    target: str    # entity name
 
 @dataclass
 class Experience:
     date: Optional[str]
     context: Optional[str]
     entities: list[str]
+    causal_links: list[CausalLink]
     text: str
     raw: str
 
@@ -116,6 +128,14 @@ class Belief:
     raw: str
 
 @dataclass
+class Reflection:
+    date: Optional[str]
+    entities: list[str]
+    causal_links: list[CausalLink]
+    text: str
+    raw: str
+
+@dataclass
 class EntitySummary:
     name: str
     text: str
@@ -126,7 +146,13 @@ class MemoryBank:
     experiences: list[Experience] = field(default_factory=list)
     world_knowledge: list[WorldFact] = field(default_factory=list)
     beliefs: list[Belief] = field(default_factory=list)
+    reflections: list[Reflection] = field(default_factory=list)
     entity_summaries: list[EntitySummary] = field(default_factory=list)
+
+
+def parse_causal_links(line: str) -> list[CausalLink]:
+    return [CausalLink(relation=m.group(1), target=m.group(2).strip())
+            for m in CAUSAL_RE.finditer(line)]
 
 
 def parse_entities(line: str) -> list[str]:
@@ -142,6 +168,7 @@ def strip_metadata(line: str) -> str:
     text = DATE_RE.sub("", text).strip()
     text = CONTEXT_RE.sub("", text, count=1).strip()
     text = ENTITY_RE.sub("", text).strip()
+    text = CAUSAL_RE.sub("", text).strip()
     text = re.sub(r"\(confidence:.*?\)", "", text).strip()
     text = re.sub(r"\(sources:.*?\)", "", text).strip()
     text = re.sub(r"\(formed:.*?\)", "", text).strip()
@@ -156,6 +183,7 @@ def parse_experience(line: str) -> Experience:
         date=date_match.group(1) if date_match else None,
         context=ctx_match.group(1) if ctx_match else None,
         entities=parse_entities(line),
+        causal_links=parse_causal_links(line),
         text=strip_metadata(line),
         raw=line,
     )
@@ -183,6 +211,17 @@ def parse_belief(line: str) -> Belief:
         confidence=float(conf_match.group(1)) if conf_match else None,
         formed=formed_match.group(1) if formed_match else None,
         updated=updated_match.group(1) if updated_match else None,
+        raw=line,
+    )
+
+
+def parse_reflection(line: str) -> Reflection:
+    date_match = DATE_RE.search(line)
+    return Reflection(
+        date=date_match.group(1) if date_match else None,
+        entities=parse_entities(line),
+        causal_links=parse_causal_links(line),
+        text=strip_metadata(line),
         raw=line,
     )
 
@@ -230,6 +269,12 @@ def parse_memory_file(path: Path) -> MemoryBank:
             summary_lines = []
             current_section = "beliefs"
             continue
+        elif stripped == "## Reflections":
+            _flush_summary(bank, summary_name, summary_lines)
+            summary_name = None
+            summary_lines = []
+            current_section = "reflections"
+            continue
         elif stripped == "## Entity Summaries":
             _flush_summary(bank, summary_name, summary_lines)
             summary_name = None
@@ -252,6 +297,8 @@ def parse_memory_file(path: Path) -> MemoryBank:
             bank.world_knowledge.append(parse_world_fact(stripped))
         elif current_section == "beliefs" and stripped.startswith("- "):
             bank.beliefs.append(parse_belief(stripped))
+        elif current_section == "reflections" and stripped.startswith("- "):
+            bank.reflections.append(parse_reflection(stripped))
         elif current_section == "entity_summaries":
             heading_match = SUMMARY_HEADING_RE.match(stripped)
             if heading_match:
@@ -288,6 +335,9 @@ def collect_all_entities(bank: MemoryBank) -> dict[str, list[str]]:
     for b in bank.beliefs:
         for e in b.entities:
             index.setdefault(e, set()).add("beliefs")
+    for r in bank.reflections:
+        for e in r.entities:
+            index.setdefault(e, set()).add("reflections")
     for es in bank.entity_summaries:
         index.setdefault(es.name, set()).add("entity_summaries")
     return {k: sorted(v) for k, v in sorted(index.items())}
@@ -302,6 +352,7 @@ def recall(
     until: Optional[str] = None,
     section: Optional[str] = None,
     cross_section: bool = False,
+    budget: Optional[int] = None,
 ) -> dict:
     """Filter memories by keyword, entity, date, or section.
 
@@ -312,6 +363,7 @@ def recall(
         "experiences": [],
         "world_knowledge": [],
         "beliefs": [],
+        "reflections": [],
         "entity_summaries": [],
     }
 
@@ -354,6 +406,18 @@ def recall(
                 continue
             results["beliefs"].append(b.raw)
 
+    if "reflections" in sections_to_search:
+        for r in bank.reflections:
+            if kw_lower and kw_lower not in r.text.lower() and kw_lower not in r.raw.lower():
+                continue
+            if ent_lower and not _entity_matches(r.entities, ent_lower):
+                continue
+            if since_date and r.date and _parse_date(r.date) < since_date:
+                continue
+            if until_date and r.date and _parse_date(r.date) > until_date:
+                continue
+            results["reflections"].append(r.raw)
+
     if "entity_summaries" in sections_to_search:
         for es in bank.entity_summaries:
             if kw_lower and kw_lower not in es.text.lower() and kw_lower not in es.name.lower():
@@ -362,7 +426,37 @@ def recall(
                 continue
             results["entity_summaries"].append(es.raw)
 
-    return {k: v for k, v in results.items() if v}
+    filtered = {k: v for k, v in results.items() if v}
+    if budget is not None:
+        filtered = _apply_budget(filtered, budget)
+    return filtered
+
+
+def _apply_budget(results: dict, budget: int) -> dict:
+    """Trim results to fit within a character budget.
+
+    Iterates through sections in priority order, keeping items until
+    the cumulative character count exceeds the budget. Roughly
+    approximates token count as chars / 4.
+    """
+    char_budget = budget * 4
+    used = 0
+    trimmed: dict = {}
+    for section_name in ("world_knowledge", "beliefs", "reflections",
+                          "experiences", "entity_summaries"):
+        items = results.get(section_name, [])
+        kept = []
+        for item in items:
+            item_len = len(item)
+            if used + item_len > char_budget:
+                break
+            kept.append(item)
+            used += item_len
+        if kept:
+            trimmed[section_name] = kept
+        if used >= char_budget:
+            break
+    return trimmed
 
 
 def stats(bank: MemoryBank, label: Optional[str] = None) -> dict:
@@ -372,10 +466,12 @@ def stats(bank: MemoryBank, label: Optional[str] = None) -> dict:
             "experiences": len(bank.experiences),
             "world_knowledge": len(bank.world_knowledge),
             "beliefs": len(bank.beliefs),
+            "reflections": len(bank.reflections),
             "entity_summaries": len(bank.entity_summaries),
             "total": (
                 len(bank.experiences) + len(bank.world_knowledge)
-                + len(bank.beliefs) + len(bank.entity_summaries)
+                + len(bank.beliefs) + len(bank.reflections)
+                + len(bank.entity_summaries)
             ),
         },
         "unique_entities": len(entity_index),
@@ -393,6 +489,7 @@ def merge_banks(banks: list[tuple[str, MemoryBank]]) -> MemoryBank:
         merged.experiences.extend(bank.experiences)
         merged.world_knowledge.extend(bank.world_knowledge)
         merged.beliefs.extend(bank.beliefs)
+        merged.reflections.extend(bank.reflections)
         merged.entity_summaries.extend(bank.entity_summaries)
     return merged
 
@@ -440,7 +537,7 @@ def digest(
 
     for label, bank in banks:
         has_content = (
-            bank.world_knowledge or bank.beliefs
+            bank.world_knowledge or bank.beliefs or bank.reflections
             or bank.entity_summaries or bank.experiences
         )
         if not has_content:
@@ -461,6 +558,13 @@ def digest(
             for b in bank.beliefs:
                 conf = f" ({b.confidence})" if b.confidence is not None else ""
                 lines.append(f"- {b.text}{conf}")
+            lines.append("")
+
+        if bank.reflections:
+            lines.append("**Reflections:**")
+            for r in bank.reflections:
+                date_str = r.date or "unknown"
+                lines.append(f"- {date_str}: {r.text}")
             lines.append("")
 
         if bank.entity_summaries:
@@ -531,6 +635,8 @@ def main():
                         help="With --show, number of recent experiences to include (default: 5)")
     parser.add_argument("--days", type=int, default=None,
                         help="With --show, include experiences from the last N days instead of --last count")
+    parser.add_argument("--budget", type=int, default=None,
+                        help="Max tokens for recall results (approx; chars/4)")
     parser.add_argument("--stats", action="store_true",
                         help="Print memory statistics instead of recall")
     parser.add_argument("--json", action="store_true",
@@ -567,6 +673,7 @@ def main():
         until=args.until,
         section=args.section,
         cross_section=args.cross_section,
+        budget=args.budget,
     )
 
     if len(banks) == 1:

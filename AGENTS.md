@@ -175,11 +175,22 @@ Do not duplicate those instructions in this guide, and do not replace the skill 
 
 ## Agent memory
 
-**Read [`skills/memory/SKILL.md`](skills/memory/SKILL.md) for all memory operations.** The skill contains trigger phrases, script commands, action dispatch, and subagent invocation instructions. Do not duplicate memory logic here.
+**Read [`skills/memory/SKILL.md`](skills/memory/SKILL.md) for all memory operations.** The skill contains trigger phrases, action dispatch, and subagent invocation instructions. Do not duplicate memory logic here.
 
-**At session start:** read [`MEMORY.md`](MEMORY.md) for project-level context.
+**At session start:** load both user and project memories by running:
+```bash
+python3 skills/memory/scripts/memory-recall.py --show
+```
+This shows world knowledge, beliefs, reflections, entity summaries, and
+recent experiences from both scopes. Use this instead of reading raw
+`MEMORY.md` — it gives a structured digest of everything the agent knows.
 
-**When the user asks about memories** ("What do you remember?", "What do you know about X?"): follow the inspection table in the memory skill — run the script directly, no subagent needed.
+**Before starting a task:** run a targeted recall against the task topic
+to surface relevant memories before writing any code. See the memory
+skill's "Pre-task recall" section.
+
+**When the user asks about memories:** follow the memory skill's `show`
+or `recall` action. No subagent needed for read-only inspection.
 
 **When storing or maintaining memories:** spawn a subagent that reads and follows the memory skill. Do not edit `MEMORY.md` directly.
 
@@ -608,6 +619,6 @@ Expectations before commit:
 - the app is verified to start successfully with `dx serve --web --fullstack`
 - UI changes get a manual screenshot-based visual check against the live app before commit
 
-For the required end-of-task execution order, including the mandatory refactoring pass and
-the requirement to run visual acceptance verification last, follow
-`docs/agent-workflows/DANEEL_WORKFLOW.md`.
+For the required end-of-task execution order, including the mandatory refactoring pass,
+the post-task memory sweep, and the requirement to run visual acceptance verification
+last, follow `docs/agent-workflows/DANEEL_WORKFLOW.md`.

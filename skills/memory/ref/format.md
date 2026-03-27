@@ -26,6 +26,11 @@ Required structure (same for both files):
 <!-- Agent's subjective judgments that evolve over time. Format:
 - {entities: e1} Belief text. (confidence: 0.XX, formed: YYYY-MM-DD, updated: YYYY-MM-DD) -->
 
+## Reflections
+
+<!-- Higher-level patterns synthesized from multiple experiences and beliefs. Format:
+- **YYYY-MM-DD** {entities: e1, e2} Reflection text. -->
+
 ## Entity Summaries
 
 <!-- Synthesized profiles of key entities, regenerated when underlying memories change. Format:
@@ -51,6 +56,56 @@ Rules:
   Avoid fragments like "port 5432 conflict" — instead write the full story.
 - Keep entries newest-first.
 - No duplicates or near-duplicates.
+
+## Causal links
+
+Experiences and reflections can optionally annotate cause-effect
+relationships using inline causal tags. These are lightweight directed
+edges that help the reflect operation trace reasoning chains.
+
+### Format
+
+Place causal tags after entity tags, before the narrative text:
+
+```text
+- **2026-03-26** [debug] {entities: dev-server, port-5432} {caused-by: build-watcher} The dev server crashed because the build watcher left a child process bound to port 5432.
+- **2026-03-26** [debug] {entities: build-watcher} {causes: port-5432} The build watcher does not clean up child processes on exit, leaving ports bound.
+```
+
+### Supported causal tags
+
+| Tag | Meaning | Example |
+|-----|---------|---------|
+| `{causes: entity}` | This event caused a problem in `entity` | Stale process → port conflict |
+| `{caused-by: entity}` | This event was caused by `entity` | Port conflict ← stale process |
+| `{enables: entity}` | This event makes `entity` possible | Config change → feature works |
+| `{prevents: entity}` | This event blocks `entity` | Missing dep → build fails |
+
+### Rules
+
+- Causal tags are **optional**. Most experiences won't have them.
+- Only add causal tags when the cause-effect relationship is clear
+  from the experience, not speculative.
+- The entity in the causal tag should also appear somewhere in the
+  memory bank (as an entity tag on another entry, or as a known entity).
+- Multiple causal tags are allowed on one entry.
+- Causal tags are metadata for the reflect operation — they help the
+  subagent trace impact chains during counterfactual analysis.
+
+### Querying causal chains
+
+Use keyword search to find causal relationships:
+
+```bash
+python3 skills/memory/scripts/memory-recall.py --keyword "caused-by: dev-server" --json
+python3 skills/memory/scripts/memory-recall.py --keyword "causes:" --json
+```
+
+> **Design note:** In the Hindsight paper, causal links are edges in a
+> graph database traversed with spreading activation. Our flat-file
+> equivalent uses inline annotations that the subagent follows manually
+> during reflect. This trades automatic traversal for simplicity and
+> zero infrastructure.
 
 ## Narrative quality standard
 
@@ -84,6 +139,13 @@ Rules:
 - Facts must be objective, verifiable, and project-relevant.
 - No duplicates.
 
+> **Design note:** In the Hindsight paper, only opinions carry confidence
+> scores — world facts are treated as objectively true. This implementation
+> adds confidence to world knowledge as a practical extension: in real
+> projects, "verified facts" can have varying certainty, and the sources
+> count maps to the paper's convergence concept. This is a deliberate
+> departure, not an oversight.
+
 ## Belief format
 
 Each belief is one bullet with confidence and temporal metadata:
@@ -100,6 +162,26 @@ Rules:
 - `updated` date changes whenever confidence is adjusted.
 - Beliefs are subjective — they represent the agent's judgments, not
   verified truths.
+
+## Reflection format
+
+Reflections are higher-level patterns synthesized from multiple
+experiences and beliefs during a reflect pass. They capture cross-entity
+insights that no single experience or belief contains.
+
+```text
+- **2026-03-26** {entities: integration-tests, dev-server, port-5432} Three separate debugging sessions all involved port conflicts from stale processes. The underlying pattern is that the dev environment does not clean up child processes on exit, causing cascading issues across unrelated tools.
+```
+
+Rules:
+
+- Use the date of the reflect pass, not the dates of source memories.
+- Entity tags required — include all entities the pattern spans.
+- Text must be a synthesis, not a copy of any single experience.
+- Keep entries newest-first.
+- Reflections are created during reflect passes, not during retain.
+- A reflection should connect 2+ experiences or beliefs into a pattern
+  that is more useful than any of them individually.
 
 ## Entity summary format
 
@@ -129,7 +211,7 @@ hyphenated names:
 When in doubt about what to tag, run the entity extraction script:
 
 ```bash
-python3 scripts/memory-manage.py extract-entities --text "your memory text"
+python3 skills/memory/scripts/memory-manage.py extract-entities --text "your memory text"
 ```
 
 ## Canonical context tags

@@ -1,14 +1,48 @@
 ---
 name: memory
 description: >
-  Persistent memory system for the agent. ALWAYS invoked as a subagent
-  for writes. Two-tier storage: user (~/.agents/memory/MEMORY.md) and
-  project (<repo>/MEMORY.md). Four memory networks: experiences, world
-  knowledge, beliefs, entity summaries. Read-only inspection (show) can
-  be run directly without a subagent.
+  Persistent memory system for the agent. Two-tier storage: user
+  (~/.agents/memory/MEMORY.md) and project (<repo>/MEMORY.md).
+  Five memory networks: experiences, world knowledge, beliefs,
+  reflections, entity summaries.
 ---
 
 # Memory System
+
+## Step 1: Determine the action
+
+**Read this table FIRST before doing anything else.** Match the user's
+request to an action, then follow only that action's instructions.
+
+| User says | Action | Subagent? | Read these refs |
+|-----------|--------|-----------|----------------|
+| "Remember this", "Don't forget", "Note that", "Keep in mind" | **remember** | **YES — spawn subagent** | `ref/format.md` + `ref/retain.md` |
+| "What do you remember?", "Show me memories", "What are your last memories?" | **show** | No | `ref/recall.md` |
+| "What do you know about X?", "Any memories about Y?" | **recall** | No | `ref/recall.md` |
+| "Reflect on your memory", "Dream", "Time for a reflection", "Review your beliefs" | **reflect** | **YES — spawn subagent** | `ref/reflect.md` + `ref/reflect-techniques.md` + `ref/profile.md` |
+| "Forget about X", "Delete that memory", "Remove the belief about Y" | **forget** | No | `ref/forget.md` |
+| "Promote this to the project" | **promote** | **YES — spawn subagent** | `ref/promote.md` |
+
+**Critical rule:** If the user asks to **store** something (remember,
+don't forget, note that, keep in mind), you MUST spawn a subagent.
+Do not run `--show`, do not load the digest, do not do anything else
+first. Spawn the subagent immediately with the content to remember.
+
+### How to spawn a remember subagent
+
+```text
+Read and follow skills/memory/SKILL.md.
+
+action: remember
+content: <the thing to remember, in the user's words or summarized>
+context: <tag: debug|testing|tooling|workflow|decision|preference|infra|docs|ui|backend|security>
+```
+
+The subagent reads SKILL.md, follows the dispatch to `ref/format.md` +
+`ref/retain.md`, and executes the full retain workflow: entity extraction,
+duplicate checking, format validation, guarded write, and auto-reflect.
+
+After the subagent completes, tell the user what was remembered.
 
 ## Architecture
 
@@ -26,66 +60,82 @@ markdown storage.
 New memories go to **user** scope unless explicitly directed to project.
 Recall searches **both** scopes by default.
 
-### Four memory networks
+### Five memory networks
 
 | Network | Epistemic role | Has confidence? |
 |---------|---------------|----------------|
 | **Experiences** | What the agent observed or did | No |
 | **World Knowledge** | Verified objective facts | Yes |
 | **Beliefs** | Subjective judgments that evolve | Yes |
+| **Reflections** | Higher-level patterns from multiple memories | No |
 | **Entity Summaries** | Synthesized entity profiles | No |
-
-### Action dispatch
-
-Each action needs only specific reference files. Read SKILL.md (this
-file) for routing, then read the listed refs for the action you need.
-
-| Action | Subagent? | Read these refs | Description |
-|--------|-----------|----------------|-------------|
-| `show` | No | `ref/recall.md` | Display memory digest |
-| `remember` | Yes | `ref/format.md` + `ref/retain.md` | Store a new memory (includes auto-reflect) |
-| `recall` | Yes | `ref/recall.md` | Query by keyword/entity/date |
-| `reflect` | Yes | `ref/reflect.md` | Review and update beliefs |
-| `maintain` | Yes | `ref/format.md` + `ref/reflect.md` | Full maintenance cycle |
-| `promote` | Yes | `ref/promote.md` | Copy user → project |
 
 **Auto-reflect:** The `remember` action automatically triggers a
 reflect pass when beliefs are stale, low-confidence, or unsupported
-by recent experiences. No explicit scheduling is needed — reflection
-is a built-in part of the retain workflow. See `ref/retain.md` for
-trigger conditions.
+by recent experiences. See `ref/retain.md` for trigger conditions.
 
-Full script reference: `ref/scripts.md`
+Script implementation details: `ref/scripts.md`
 
-## Memory inspection (no subagent — run directly)
+## Automatic memory retrieval
 
-When the user asks to **see** memories, run `scripts/memory-recall.py`
-directly and display the output.
+### Session-start loading
 
-| User says | Command |
-|-----------|---------|
-| "What do you remember?" | `python3 scripts/memory-recall.py --show` |
-| "What are your last memories?" | `python3 scripts/memory-recall.py --show --last 10` |
-| "Show me your user memories" | `python3 scripts/memory-recall.py --show --scope user` |
-| "Show me the project memories" | `python3 scripts/memory-recall.py --show --scope project` |
-| "What happened last week?" | `python3 scripts/memory-recall.py --show --days 7` |
-| "What do you know about \<topic\>?" | `python3 scripts/memory-recall.py --entity "<topic>" --cross-section` |
-| "Any memories about \<keyword\>?" | `python3 scripts/memory-recall.py --keyword "<keyword>"` |
+At the start of every session, load the memory digest into context:
 
-## Memory writes (subagent required)
+```bash
+python3 skills/memory/scripts/memory-recall.py --show
+```
 
-Spawn a subagent for any operation that modifies memory. The subagent
-reads this file for routing, then reads the ref files listed in the
-dispatch table above.
+This replaces reading raw `MEMORY.md`. The digest includes world
+knowledge, beliefs, reflections, entity summaries, and recent
+experiences from both user and project scopes.
 
-Invoke when:
+### Pre-task recall
 
-- The model encounters information useful in future sessions.
-- The user explicitly says "remember this" or equivalent.
-- A workflow produces a postmortem outcome.
-- A maintenance pass is needed.
+Before starting any task, run a targeted recall against the task topic:
 
-### Subagent parameters
+```bash
+python3 skills/memory/scripts/memory-recall.py --entity "<topic>" --cross-section --json
+python3 skills/memory/scripts/memory-recall.py --keyword "<keyword>" --json
+```
+
+| User says | Recall command |
+|-----------|---------------|
+| "Fix the integration tests" | `--entity "integration-tests" --cross-section` |
+| "Work on the API gateway" | `--entity "api-gateway" --cross-section` |
+| "The build is failing" | `--keyword "build" --cross-section` |
+
+If no memories match, proceed normally.
+
+## Automatic memory capture
+
+### Post-task sweep (after every completed task)
+
+After completing any task — **before committing** — ask:
+
+> "What did I learn that would be useful in a future session?"
+
+If non-empty, **spawn a memory subagent** with `action: remember` for
+each lesson, then **tell the user what was remembered**:
+
+> **Remembered:**
+> - [debug] The integration test hangs if port 5432 is already bound.
+> - [workflow] Running the combined dev command avoids CSS rebuild issues.
+
+This is **not optional** — it is part of the mandatory task completion
+sequence (see `docs/agent-workflows/DANEEL_WORKFLOW.md`).
+
+### Session-end review
+
+When the conversation is winding down ("thanks", "goodbye", "that's
+all", or task done with no follow-up):
+
+1. Scan for uncaptured lessons, surprises, decisions, or workarounds.
+2. **Spawn a memory subagent** with `action: remember` for each item.
+3. **Tell the user what was remembered.**
+4. If the session was substantial, also spawn `action: reflect`.
+
+## Subagent parameters (for write operations)
 
 | Field | Required | Description |
 |------|----------|-------------|
@@ -99,30 +149,20 @@ Invoke when:
 
 ## Invocation examples
 
-### Show (no subagent)
-
-```bash
-python3 scripts/memory-recall.py --show
-python3 scripts/memory-recall.py --show --scope user
-python3 scripts/memory-recall.py --show --scope project
-python3 scripts/memory-recall.py --show --last 20
-python3 scripts/memory-recall.py --show --days 7 --scope user
-```
-
-### Remember (subagent)
+### Remember (spawn subagent)
 
 ```text
-Read skills/memory/SKILL.md, then ref/format.md and ref/retain.md.
+Read and follow skills/memory/SKILL.md.
 
 action: remember
-content: The integration test suite requires port 5432 to be free; it hangs if another process is already bound to that port. Killing the stale process fixes the issue.
+content: The integration test suite requires port 5432 to be free; it hangs if another process is already bound.
 context: testing
 ```
 
-### Remember to project scope
+### Remember to project scope (spawn subagent)
 
 ```text
-Read skills/memory/SKILL.md, then ref/format.md and ref/retain.md.
+Read and follow skills/memory/SKILL.md.
 
 action: remember
 content: PostgreSQL 16 requires explicit listen_addresses for remote connections.
@@ -130,37 +170,49 @@ context: infra
 scope: project
 ```
 
-### Recall
+### Show (run directly)
 
-```text
-Read skills/memory/SKILL.md, then ref/recall.md.
-
-action: recall
-query: entity=api-gateway, cross-section=true
+```bash
+python3 skills/memory/scripts/memory-recall.py --show
+python3 skills/memory/scripts/memory-recall.py --show --scope user
+python3 skills/memory/scripts/memory-recall.py --show --last 20
+python3 skills/memory/scripts/memory-recall.py --show --days 7
 ```
 
-### Promote
+### Recall (run directly)
 
-```text
-Read skills/memory/SKILL.md, then ref/promote.md.
-
-action: promote
-section: experiences
-index: 0
+```bash
+python3 skills/memory/scripts/memory-recall.py --entity "api-gateway" --cross-section --json
+python3 skills/memory/scripts/memory-recall.py --keyword "database" --json
 ```
 
-### Reflect
+### Reflect (spawn subagent)
 
 ```text
-Read skills/memory/SKILL.md, then ref/reflect.md.
+Read and follow skills/memory/SKILL.md.
 
 action: reflect
 ```
 
-### Maintain
+### Maintain (spawn subagent)
 
 ```text
-Read skills/memory/SKILL.md, then ref/format.md and ref/reflect.md.
+Read and follow skills/memory/SKILL.md.
 
 action: maintain
 ```
+
+### Promote (spawn subagent)
+
+```text
+Read and follow skills/memory/SKILL.md.
+
+action: promote
+section: experiences
+index: 0
+allow_project_promotion: true
+```
+
+### Forget (run directly)
+
+See `ref/forget.md` for the full workflow.
