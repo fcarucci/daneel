@@ -69,19 +69,7 @@ Example:
 [T2.7] Make agent recency and heartbeat state update live
 ```
 
-Use the GitHub admin script directly for PR creation:
-
-```bash
-node scripts/github-admin.mjs create-pr --head <branch> --base main --title "[<Task tag>] Title" --issue <n> --body "<markdown>"
-```
-
-Do not route this through an npm wrapper. In this repo the direct `node scripts/github-admin.mjs ...` command is the intended shortcut and should be preferred to avoid repeated approval prompts.
-
-For approval hygiene, prefer approving this single reusable prefix once:
-
-```text
-node scripts/github-admin.mjs create-pr
-```
+Open the **[`github-admin` skill](skills/github-admin/SKILL.md)** and follow **Pull requests (Daneel task workflow)** (and [references/commands/create-pr.md](skills/github-admin/references/commands/create-pr.md)) for the exact `create-pr` invocation, base branch, body, issue linking, and client approval-prefix guidance. Prefer that skill over copying ad hoc shell snippets into this document.
 
 11. Link the task to the merge request.
 

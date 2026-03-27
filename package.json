@@ -4,7 +4,7 @@
     "watch:css": "node scripts/watch-css.mjs",
     "dev": "bash scripts/dev.sh 4127 127.0.0.1",
     "start": "bash scripts/dev.sh 4127 127.0.0.1",
-    "github:admin": "node scripts/github-admin.mjs",
+    "github:admin": "node skills/github-admin/scripts/github-admin.mjs",
     "verify:route": "node scripts/verify-route.mjs",
     "verify:dashboard-state": "node scripts/verify-dashboard-state.mjs",
     "verify:live": "node scripts/verify-live.mjs",

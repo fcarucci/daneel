@@ -314,7 +314,10 @@ async function runCommand(command, args) {
 }
 
 async function runGitHubAdmin(args) {
-  const stdout = await runCommand("node", ["scripts/github-admin.mjs", ...args]);
+  const stdout = await runCommand("node", [
+    "skills/github-admin/scripts/github-admin.mjs",
+    ...args,
+  ]);
   return stdout ? JSON.parse(stdout) : null;
 }
 
