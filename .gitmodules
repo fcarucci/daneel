@@ -1,0 +1,3 @@
+[submodule "skills/memory"]
+	path = skills/memory
+	url = git@github.com:fcarucci/agent-memory.git
