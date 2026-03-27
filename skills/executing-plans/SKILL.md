@@ -24,20 +24,19 @@ Load plan, review critically, execute all tasks, report when complete.
 ### Step 2: Signal work start (project management)
 
 Before touching any code, check whether `skills/project-management/SKILL.md` exists.
+If it does, gather any available context: issue number, branch name, PR number.
 
-**If it exists and the plan names an issue number:**
-
-Spawn a subagent with this context and instruct it to read and follow `skills/project-management/SKILL.md` with event **`started`**:
+Spawn a subagent with the available context and instruct it to read and follow `skills/project-management/SKILL.md` with event **`started`**:
 
 ```
-Issue: <ISSUE_NUMBER>
-Branch: <BRANCH_NAME>
-Event: started
+Event:  started
+Issue:  <ISSUE_NUMBER_if_known>
+Branch: <BRANCH_NAME_if_known>
 ```
 
-The subagent sets the GitHub Project status to `In Progress` and posts a branch comment on the issue.
-
-If the issue number is unknown or the skill file is absent, skip silently and continue.
+The subagent sets the project status to `In Progress` and posts a branch comment.
+Skip any field that is not yet known — the skill handles missing context gracefully.
+If the skill file is absent, skip this step entirely.
 
 ### Step 3: Execute Tasks
 
@@ -58,26 +57,22 @@ After all tasks complete and verified:
 ### Step 5: Signal work complete (project management)
 
 After the PR is opened, check whether `skills/project-management/SKILL.md` exists.
+If it does, gather any available context: issue number, PR number, branch name.
 
-**If it exists and both issue and PR numbers are known:**
+Compose a brief implementation summary covering what changed, how it was tested, and any known limitations or follow-up items.
 
-Compose a brief implementation summary covering:
-- what changed and why
-- how it was tested
-- any known limitations or follow-up items
-
-Spawn a subagent with this context and instruct it to read and follow `skills/project-management/SKILL.md` with event **`ready-for-merge`**:
+Spawn a subagent with the available context and instruct it to read and follow `skills/project-management/SKILL.md` with event **`ready-for-merge`**:
 
 ```
-Issue: <ISSUE_NUMBER>
-PR: <PR_NUMBER>
-Event: ready-for-merge
+Event:   ready-for-merge
+Issue:   <ISSUE_NUMBER_if_known>
+PR:      <PR_NUMBER_if_known>
 Summary: <IMPLEMENTATION_SUMMARY>
 ```
 
-The subagent sets the GitHub Project status to `Ready for Merge`, links the PR to the issue, and posts the summary as a comment on the issue.
-
-If the issue number, PR number, or skill file is absent, skip silently.
+The subagent sets the project status to `Ready for Merge`, links the PR to the issue, and posts the summary as a comment.
+Skip any field that is not yet known — the skill handles missing context gracefully.
+If the skill file is absent, skip this step entirely.
 
 ## When to Stop and Ask for Help
 
