@@ -175,26 +175,13 @@ Do not duplicate those instructions in this guide, and do not replace the skill 
 
 ## Agent memory
 
-**Read [`skills/memory/SKILL.md`](skills/memory/SKILL.md) for all memory operations.** The skill contains trigger phrases, action dispatch, and subagent invocation instructions. Do not duplicate memory logic here.
+**Interact with memory only through the skill.** Read and follow [`skills/memory/SKILL.md`](skills/memory/SKILL.md) for every memory operation: trigger phrases, session-start and pre-task recall, show/recall, remember/reflect/maintain/promote, subagent spawns, curated master behavior, and optional model presets ([`skills/memory/ref/config.md`](skills/memory/ref/config.md)). **Do not** document or copy memory CLI invocations into this guide—procedure lives entirely in the skill and its `ref/` docs.
 
-**At session start:** load both user and project memories by running:
-```bash
-python3 skills/memory/scripts/memory-recall.py --show
-```
-This shows world knowledge, beliefs, reflections, entity summaries, and
-recent experiences from both scopes. Use this instead of reading raw
-`MEMORY.md` — it gives a structured digest of everything the agent knows.
+**When the user asks about memories:** follow the skill’s `show` or `recall` action. No subagent needed for read-only inspection.
 
-**Before starting a task:** run a targeted recall against the task topic
-to surface relevant memories before writing any code. See the memory
-skill's "Pre-task recall" section.
+**When storing or maintaining memories:** spawn a subagent that reads and follows the memory skill. Do not edit `MEMORY.md` or per-section memory files directly for routine writes.
 
-**When the user asks about memories:** follow the memory skill's `show`
-or `recall` action. No subagent needed for read-only inspection.
-
-**When storing or maintaining memories:** spawn a subagent that reads and follows the memory skill. Do not edit `MEMORY.md` directly.
-
-**Subagent model selection:** optional `~/.agents/memory/memory-skill.config.json` defines which model preset to use per memory action (`remember`, `reflect`, `maintain`, `promote`). Before spawning a memory subagent, run `python3 skills/memory/scripts/memory-manage.py config-hints` and use the resolved `model_id` for that action unless the subagent payload includes an explicit `model_preset`. See `skills/memory/ref/config.md`.
+Do not duplicate memory logic here.
 
 ## Run Commands
 
