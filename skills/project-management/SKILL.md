@@ -25,23 +25,88 @@ resolves the work item and acts on it.
 
 ## Step 1: Resolve task to a work item
 
-Before doing anything else, determine the issue number from the context provided.
-
-**If an issue number was given directly** — use it.
-
-**Otherwise, search by task ID or name:**
-
-```bash
-node skills/github-admin/scripts/github-admin.mjs \
-  list-issues --title-contains "<TASK_ID_OR_NAME>" --state open
-```
-
-Pick the issue whose title best matches the task. If no match is found,
-**exit gracefully** — log "No work item found for task <TASK>; skipping
-project management." and stop. Do not error.
+Before doing anything else, determine the issue number from the available
+context. Work through the signals below **in order**, stopping as soon as
+one produces an unambiguous match.
 
 Read [`skills/github-admin/SKILL.md`](../github-admin/SKILL.md) for auth
 and configuration before running any commands.
+
+---
+
+### Signal 1 — direct issue number
+
+If the calling context includes an explicit issue number, use it immediately.
+Skip all remaining signals.
+
+---
+
+### Signal 2 — PR closing reference
+
+If a PR number is available, inspect the PR body and title for closing
+keywords (`Closes #N`, `Fixes #N`, `Resolves #N`). Extract N and use it.
+
+```bash
+node skills/github-admin/scripts/github-admin.mjs \
+  list-prs --state open
+# find the PR by number and read its body for #N references
+```
+
+---
+
+### Signal 3 — structured task ID
+
+If the task context contains a structured ID (e.g. `T2.7`, `T1.12`),
+search open issues for it. A structured ID is almost always unique.
+
+```bash
+node skills/github-admin/scripts/github-admin.mjs \
+  list-issues --title-contains "<TASK_ID>" --state open
+```
+
+If exactly one result, use it. If zero results, try `--state all` (the
+issue may already be closed).
+
+---
+
+### Signal 4 — branch name decoding
+
+If a branch name is available, extract a task ID from it:
+
+- Strip common prefixes: `task/`, `feature/`, `fix/`, `hotfix/`
+- Normalise separators: replace `_` and `-` with `.` in the task segment
+- Example: `task/T2_7` → `T2.7`
+
+Then apply Signal 3 with the extracted ID.
+
+---
+
+### Signal 5 — task name keyword search
+
+Search by the most distinctive words from the task name or description:
+
+```bash
+node skills/github-admin/scripts/github-admin.mjs \
+  list-issues --title-contains "<DISTINCTIVE_KEYWORD>" --state open
+```
+
+Run narrower searches first; broaden only if zero results.
+
+**Disambiguation when multiple results are returned:**
+
+1. Prefer the issue whose title contains the greatest number of words from the task name (case-insensitive).
+2. Among ties, prefer open over closed.
+3. Among remaining ties, take the lowest issue number.
+4. Log all candidates and the chosen one before proceeding.
+
+---
+
+### No match found
+
+If all signals are exhausted without a match:
+
+- Log: `No work item found for task '<TASK>'; skipping project management.`
+- Exit cleanly. Do not error or throw.
 
 ## Step 2: Act on the event
 
