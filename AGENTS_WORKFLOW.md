@@ -14,9 +14,17 @@ Examples:
 
 - `task/T2_7`
 
-2. Invoke the **[`project-management` skill](skills/project-management/SKILL.md)** with event **`started`** and the issue number for this task.
+2. **Spawn a subagent** to run the **[`project-management` skill](skills/project-management/SKILL.md)** with event **`started`**.
 
-   The skill sets the GitHub Project status to `In Progress` and posts a branch comment on the issue.  Read the skill before running commands.
+   Pass this context to the subagent:
+
+   ```
+   Event:  started
+   Issue:  <ISSUE_NUMBER>
+   Branch: <BRANCH_NAME>
+   ```
+
+   The subagent reads `skills/project-management/SKILL.md`, sets the GitHub Project status to `In Progress`, and posts a branch comment on the issue.
 
 3. Implement the task on the feature branch.
 
@@ -73,9 +81,18 @@ Example:
 
 Open the **[`github-admin` skill](skills/github-admin/SKILL.md)** and follow **Pull requests (Daneel task workflow)** (and [references/commands/create-pr.md](skills/github-admin/references/commands/create-pr.md)) for the exact `create-pr` invocation, base branch, body, issue linking, and client approval-prefix guidance. Prefer that skill over copying ad hoc shell snippets into this document.
 
-11. Invoke the **[`project-management` skill](skills/project-management/SKILL.md)** with event **`ready-for-merge`** and the issue + PR numbers.
+11. **Spawn a subagent** to run the **[`project-management` skill](skills/project-management/SKILL.md)** with event **`ready-for-merge`**.
 
-    The skill sets the GitHub Project status to `Ready for Merge` and calls `link-pr-task` to add the closing keyword to the PR body and a linked-PR comment on the issue.
+    Pass this context to the subagent:
+
+    ```
+    Event:   ready-for-merge
+    Issue:   <ISSUE_NUMBER>
+    PR:      <PR_NUMBER>
+    Summary: <one paragraph: what changed, how tested, known limitations>
+    ```
+
+    The subagent reads `skills/project-management/SKILL.md`, sets the GitHub Project status to `Ready for Merge`, links the PR to the issue, and posts the summary as a comment on the issue.
 
 13. Add relevant implementation notes to the merge request description.
 

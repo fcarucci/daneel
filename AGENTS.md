@@ -167,7 +167,7 @@ cargo test
 
 **Prefer the [`github-admin` skill](skills/github-admin/SKILL.md)** (same content at `.cursor/skills/github-admin`) for any GitHub automation this repo already supports: labels, milestones, project board, issues, pull requests, releases, verification comments, and related maintenance. Read that skill before running commands; it holds invocation, auth, typical examples, PR conventions, approval-prefix guidance, and links to per-command reference files.
 
-**For task lifecycle transitions** (starting work, blocking, opening a PR, closing), use the **[`project-management` skill](skills/project-management/SKILL.md)** instead of calling `set-issue-status` and `comment-issue` by hand. The skill documents the exact command sequence for each event and delegates to `github-admin` for execution.
+**For task lifecycle transitions** (starting work, blocking, opening a PR, closing), **spawn a subagent** that reads and follows the **[`project-management` skill](skills/project-management/SKILL.md)**. Pass the event name (`started`, `blocked`, `ready-for-merge`, or `done`) together with the relevant context (issue number, branch, PR number, summary). Never call `set-issue-status` or `comment-issue` directly for lifecycle transitions — delegate to the skill subagent.
 
 Do not duplicate those instructions in this guide, and do not replace the skill with ad hoc `curl` or one-off scripts when the CLI covers the work.
 
