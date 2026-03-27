@@ -37,3 +37,6 @@ npm-debug.log*
 /assets/main.css
 .ccp
 daneel.toml
+
+
+__pycache__/
