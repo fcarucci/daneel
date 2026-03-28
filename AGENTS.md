@@ -79,7 +79,7 @@ Important files and folders:
 - `skills/github-admin/`: **Github Admin** skill — use [`skills/github-admin/SKILL.md`](skills/github-admin/SKILL.md) for all GitHub CLI automation (labels, milestones, project board, PRs, issues, releases)
 - `skills/project-management/`: **Project Management** skill — use [`skills/project-management/SKILL.md`](skills/project-management/SKILL.md) to synchronise GitHub Project board status and post issue comments at each workflow lifecycle checkpoint (`started`, `blocked`, `ready-for-merge`, `done`)
 - `skills/memory/`: **Memory** skill — use [`skills/memory/SKILL.md`](skills/memory/SKILL.md) for all memory operations (store, query, inspect, maintain, promote)
-- `MEMORY.md`: project-level shared memory maintained by the memory skill
+- `MEMORY.md`: thin curated previews (safe to `@` from here); full entries live in `memory/*.md` and are maintained by the memory skill
 - `docs/`: requirements, design, and milestone planning
 - `development_setup.md`: local toolchain notes
 

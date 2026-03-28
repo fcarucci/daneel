@@ -1,27 +1,21 @@
 # Agent Memory
 
-## Experiences
-
-<!-- Newest first. Format: - **YYYY-MM-DD** [context] {entities: e1, e2} Narrative memory text. -->
+<!-- Curated subset suitable for inclusion in AGENTS.md.
+     One-line previews; follow links for full markdown in section files.
+     Regenerate via memory skill curation (SKILL.md / ref/retain.md) -->
 
 ## World Knowledge
 
-<!-- Verified, objective facts about the project and environment. Format:
-- {entities: e1} Fact text. (confidence: 0.XX, sources: N) -->
+
+*Full section: [world_knowledge.md](memory/world_knowledge.md)*
 
 ## Beliefs
 
-<!-- Agent's subjective judgments that evolve over time. Format:
-- {entities: e1} Belief text. (confidence: 0.XX, formed: YYYY-MM-DD, updated: YYYY-MM-DD) -->
-- {entities: integration-tests} The integration test suite is the most valuable automated test in the project. (confidence: 0.60, formed: 2026-03-26, updated: 2026-03-26)
+- The integration test suite is the most valuable automated test in the project.
 
-## Reflections
-
-<!-- Higher-level patterns synthesized from multiple experiences and beliefs. Format:
-- **YYYY-MM-DD** {entities: e1, e2} Reflection text. -->
+*Full section: [beliefs.md](memory/beliefs.md)*
 
 ## Entity Summaries
 
-<!-- Synthesized profiles of key entities, regenerated when underlying memories change. Format:
-### entity-name
-Summary paragraph. -->
+
+*Full section: [entity_summaries.md](memory/entity_summaries.md)*
