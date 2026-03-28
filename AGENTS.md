@@ -31,6 +31,10 @@ High-level goals:
 - polished operator-focused UX
 - expanding server-backed data loading and live operational views
 
+## Agent role (Rust + frontend)
+
+When implementing in this repo, work as a **strong Rust developer** with a **frontend specialty**: idiomatic Rust (clear types, error handling, and tests where they add signal), Dioxus **0.7** (components, state, routing, fullstack server functions and their boundaries), **CSS**, and **Tailwind 4** (`styles/app.css` as the source of truth; regenerate `assets/main.css` via `npm run build:css`—do not hand-edit generated CSS). Prefer existing theme tokens and layout patterns; ship UI that is cohesive, accessible (focus, contrast, semantics), and aligned with the mission-control visual direction in the design docs.
+
 ## Mandatory Workflow
 
 For any implementation task in this repo, the detailed execution workflow in
@@ -49,121 +53,71 @@ refactoring, review gates, or push/commit readiness, follow
 
 ## Current Tech Stack
 
-- Rust edition `2024`
-- Dioxus `0.7.3`
-- Dioxus Router via `dioxus` feature `router`
-- Default app platform feature: `web`
-- Dioxus app metadata in `Dioxus.toml`
-- Tailwind CSS `4.2.1` via `@tailwindcss/cli`
-- Playwright route verification using the system `google-chrome`
-- Tailwind source stylesheet in `styles/app.css`
-- Generated application stylesheet in `assets/main.css`
-- Dioxus fullstack server functions for backend calls
-- OpenClaw loopback WebSocket gateway status fetch
+Rust 2024, Dioxus `0.7.3` (feature `router`, default platform `web`), Dioxus fullstack server functions, Tailwind CSS `4.2.1` via `@tailwindcss/cli` (`styles/app.css` → `assets/main.css`), Playwright route verification with **system** `google-chrome`, OpenClaw loopback WebSocket gateway status fetch. Metadata in `Dioxus.toml`.
 
-There is currently no full adapter implementation and no automated Rust test suite beyond build and runtime verification.
+There is no full adapter yet; automated coverage is build checks, `cargo test`, mock-gateway E2E, and the procedures in [`docs/agent-guides/verification-and-browser.md`](docs/agent-guides/verification-and-browser.md).
 
-## Repository Layout
+## Repository layout
 
-Important files and folders:
+| Path | Role |
+|------|------|
+| `Cargo.toml`, `Dioxus.toml` | Crate manifest, Dioxus web metadata |
+| `src/main.rs` | Entrypoint, stylesheet link, router mount |
+| `src/router.rs` | `Route` and labels |
+| `src/gateway.rs` | Server function, gateway config, WS handshake, `get_gateway_status()` |
+| `src/models/` | Shared Rust models for server/UI state |
+| `src/components/` | Shell: `layout.rs`, `sidebar.rs`, `navbar.rs` |
+| `src/pages/` | `dashboard.rs`, `agents.rs`, `settings.rs`, `not_found.rs` |
+| `assets/main.css`, `styles/app.css` | Built theme; Tailwind 4 source and tokens |
+| `src/test_support.rs` | SSR route test harness |
+| `docs/agent-guides/` | Detailed agent procedures ([`verification-and-browser.md`](docs/agent-guides/verification-and-browser.md)) |
+| `docs/` | Requirements, design, milestones |
+| `development_setup.md` | Local toolchain notes |
+| [`skills/github-admin/SKILL.md`](skills/github-admin/SKILL.md) | GitHub CLI automation |
+| [`skills/project-management/SKILL.md`](skills/project-management/SKILL.md) | Issue/PR lifecycle (`started`, `blocked`, `ready-for-merge`, `done`) |
+| [`skills/memory/SKILL.md`](skills/memory/SKILL.md) | Memory store/query/maintain (see **Agent memory**) |
+| `MEMORY.md` | Curated previews; full entries in `memory/*.md` (memory skill) |
 
-- `Cargo.toml`: crate manifest and Dioxus platform features
-- `Dioxus.toml`: Dioxus app metadata for web serving
-- `src/main.rs`: app entrypoint, stylesheet link, router mount
-- `src/gateway.rs`: Dioxus server function and OpenClaw gateway WebSocket status fetch
-- `src/models/`: shared Rust models for server/UI state
-- `src/router.rs`: typed routes
-- `src/components/`: shared shell UI pieces
-- `src/pages/`: route-level page components
-- `assets/main.css`: app styling
-- `skills/github-admin/`: **Github Admin** skill — use [`skills/github-admin/SKILL.md`](skills/github-admin/SKILL.md) for all GitHub CLI automation (labels, milestones, project board, PRs, issues, releases)
-- `skills/project-management/`: **Project Management** skill — use [`skills/project-management/SKILL.md`](skills/project-management/SKILL.md) to synchronise GitHub Project board status and post issue comments at each workflow lifecycle checkpoint (`started`, `blocked`, `ready-for-merge`, `done`)
-- `skills/memory/`: **Memory** skill — use [`skills/memory/SKILL.md`](skills/memory/SKILL.md) for all memory operations (store, query, inspect, maintain, promote)
-- `MEMORY.md`: thin curated previews (safe to `@` from here); full entries live in `memory/*.md` and are maintained by the memory skill
-- `docs/`: requirements, design, and milestone planning
-- `development_setup.md`: local toolchain notes
+**Routes:** `/`, `/agents`, `/settings`, fallback not-found.
 
-Current page routes:
+## Local prerequisites
 
-- `/`
-- `/agents`
-- `/settings`
-- fallback not-found route
+`rustc`, `cargo`, `rustfmt`, `dx`, `google-chrome`, `wasm32-unknown-unknown`. Reload Rust on `PATH` if needed: `. "$HOME/.cargo/env"`. Version checks: `rustc --version`, `cargo --version`, `dx --version`, `rustup target list --installed`. More detail: `development_setup.md`.
 
-## Local Prerequisites
+## Development commands
 
-Expected tools:
-
-- `rustc`
-- `cargo`
-- `rustfmt`
-- `dx` (Dioxus CLI)
-- `google-chrome`
-- `wasm32-unknown-unknown` Rust target
-
-Useful checks:
-
-```bash
-rustc --version
-cargo --version
-dx --version
-rustup target list --installed
-```
-
-If Rust binaries are not on `PATH` yet:
-
-```bash
-. "$HOME/.cargo/env"
-```
-
-## Build Commands
-
-Build the Tailwind CSS bundle:
-
-```bash
-npm run build:css
-```
-
-Watch and rebuild the Tailwind CSS bundle during UI work:
-
-```bash
-npm run watch:css
-```
-
-Run the preferred hot-reload development workflow:
+**Daily dev** (Tailwind watcher + fullstack dev server):
 
 ```bash
 npm run dev
 ```
 
-This starts both:
+**CSS:** `npm run build:css` — one-off build; `npm run watch:css` — watch during UI work.
 
-- the Tailwind 4 watcher
-- the Dioxus web dev server
-
-Format the code:
+**Rust:**
 
 ```bash
 cargo fmt --all
-```
-
-Verify the crate compiles:
-
-```bash
 cargo check
-```
-
-Verify the server-enabled fullstack build too:
-
-```bash
 cargo check --features server
-```
-
-Run the Rust test suite:
-
-```bash
 cargo test
 ```
+
+**Fixed port** (deterministic browser testing; build CSS first if not using `npm run dev`):
+
+```bash
+npm run build:css
+dx serve --web --fullstack --addr 127.0.0.1 --port 4127 --open false
+```
+
+**Remote / port forwarding** (bind all interfaces):
+
+```bash
+npm run build:css
+dx serve --web --fullstack --addr 0.0.0.0 --port 4127 --open false
+```
+
+**Notes:** First web build can be slow. `npm run dev` is preferred for hot reload (Tailwind + Dioxus). `dx serve` alone does not rebuild CSS from `styles/app.css`. Server functions require **fullstack** serve. `Dioxus.toml` is required for `dx serve` to serve the app correctly.
 
 ## GitHub administration
 
@@ -175,59 +129,15 @@ Do not duplicate those instructions in this guide, and do not replace the skill 
 
 ## Agent memory
 
-**Interact with memory only through the skill.** Read and follow [`skills/memory/SKILL.md`](skills/memory/SKILL.md) for every memory operation: trigger phrases, session-start and pre-task recall, show/recall, remember/reflect/maintain/promote, subagent spawns, curated master behavior, and optional model presets ([`skills/memory/ref/config.md`](skills/memory/ref/config.md)). **Do not** document or copy memory CLI invocations into this guide—procedure lives entirely in the skill and its `ref/` docs.
+- Use **only** [`skills/memory/SKILL.md`](skills/memory/SKILL.md) (and its `ref/` docs, including [`skills/memory/ref/config.md`](skills/memory/ref/config.md) for host routing such as `MEMORY_SKILL_HOST` and `memory-skill.config.json`) for remember/show/recall/reflect/maintain/promote. Do not copy memory CLI or workflows into this file.
+- **Store or maintain:** spawn a subagent per the skill. **Read-only** questions about memories: use `show` / `recall` per the skill. Do not edit `MEMORY.md` or `memory/*.md` by hand for routine writes.
+- Post-task memory sweep and ordering: [`docs/agent-workflows/DANEEL_WORKFLOW.md`](docs/agent-workflows/DANEEL_WORKFLOW.md).
 
-**Per-tool model routing:** optional `hosts.cursor`, `hosts.claude`, and `hosts.codex` in `~/.agents/memory/memory-skill.config.json` map the same preset names to different real model ids per product. Set **`MEMORY_SKILL_HOST`** to `cursor`, `claude`, or `codex` in the environment for the session (or equivalent host wiring) so **config-hints** and orchestration pick the correct merge—see [`skills/memory/ref/config.md`](skills/memory/ref/config.md).
+## Test and verification
 
-**When the user asks about memories:** follow the skill’s `show` or `recall` action. No subagent needed for read-only inspection.
+**Deep procedures** (mock-gateway E2E, hydration, `verify-route`, gateway card, screenshots): [`docs/agent-guides/verification-and-browser.md`](docs/agent-guides/verification-and-browser.md).
 
-**When storing or maintaining memories:** spawn a subagent that reads and follows the memory skill. Do not edit `MEMORY.md` or per-section memory files directly for routine writes.
-
-Do not duplicate memory logic here.
-
-## Run Commands
-
-Preferred day-to-day command:
-
-```bash
-npm run dev
-```
-
-This starts both:
-
-- the Tailwind watcher
-- the Dioxus fullstack dev server
-
-Use a fixed local port when you want deterministic browser testing:
-
-```bash
-npm run build:css
-dx serve --web --fullstack --addr 127.0.0.1 --port 4127 --open false
-```
-
-If you are using VS Code port forwarding from a remote session, this variant is usually safest:
-
-```bash
-npm run build:css
-dx serve --web --fullstack --addr 0.0.0.0 --port 4127 --open false
-```
-
-Notes:
-
-- The first web build can take a while because Dioxus may install or compile web tooling.
-- `assets/main.css` is generated from `styles/app.css` through Tailwind 4.
-- `npm run dev` is the intended hot-reload workflow because it runs both the Tailwind watcher and the Dioxus fullstack dev server together.
-- Running only `dx serve --web --fullstack` is not enough for CSS hot reload, because Tailwind output must also be regenerated from `styles/app.css`.
-- The app now uses Dioxus server functions, so the fullstack serve path is required for backend-backed UI features.
-- `Dioxus.toml` is required so `dx serve` recognizes and serves the web app correctly.
-
-## Test And Verification Workflow
-
-There is not yet a formal Rust test suite, so validation is currently a mix of compile checks and runtime smoke testing.
-
-The repository now includes a small frontend SSR test harness for route rendering in `src/test_support.rs`.
-
-### Minimum validation
+**Quick local loop** (not a substitute for `DANEEL_WORKFLOW.md` pre-push gates):
 
 ```bash
 npm run build:css
@@ -237,379 +147,30 @@ cargo check --features server
 cargo test
 ```
 
-### Mock-gateway integration test
+**Mock-gateway E2E:** `cargo test --test e2e_mock_gateway` (needs `dx` and `npm` on `PATH`).
 
-The repo now includes an end-to-end integration test that runs through `cargo test`.
+**Before commit:** follow `docs/agent-workflows/DANEEL_WORKFLOW.md` for the full sequence (refactoring pass, re-verification, visual acceptance last, memory sweep). For heavier checks before pushing, that workflow’s pre-push section is authoritative.
 
-It:
+## Known current state
 
-- starts a mock OpenClaw-style WebSocket gateway
-- writes a temporary OpenClaw config for Daneel
-- launches the real Dioxus fullstack app
-- verifies route DOM/HTML over HTTP
-- verifies the live gateway bridge through the SSE endpoint
+- App shell, dashboard, and agents hydrate; gateway status via server function and loopback WebSocket
+- Styling via Dioxus asset pipeline; mock-gateway integration test for DOM/HTML and SSE
+- No OpenClaw adapter yet; no large Rust integration suite beyond SSR harness and mock-gateway path
 
-Use:
+## Development guidance
 
-```bash
-cargo test --test e2e_mock_gateway
-```
+Rust-first Dioxus; typed routes and shared models; keep route vs shell separation; align visuals with mission-control styling; follow design docs before new architecture; do not assume OpenClaw behavior unless implemented here.
 
-Notes:
+Planned (from design docs): adapter contract, server-function backbone, graph-oriented agents view, richer deterministic testing.
 
-- this is the preferred `T1.5` end-to-end browser test entrypoint
-- it does not depend on the developer's personal OpenClaw data
-- it requires `dx` and `npm` on `PATH`
-- keep screenshot capture out of this automated test path; the mock-gateway suite should stay deterministic and fail fast
+## Git hygiene
 
-### Runtime smoke test
+`.gitignore` includes `target/`, editor swaps, local env files, common IDE dirs, logs. Do not commit generated build output.
 
-Run the dev server:
+## If you are continuing implementation
 
-```bash
-npm run build:css
-dx serve --web --fullstack --addr 127.0.0.1 --port 4127 --open false
-```
+Before changes: `git status --short`, `npm run build:css`, `cargo check`. After changes: `npm run build:css`, `cargo fmt --all`, `cargo check`. Routing/rendering/asset changes: browser smoke with `dx serve --web` (or fullstack as above).
 
-Then verify the server responds:
+## Test cadence
 
-```bash
-curl -I http://127.0.0.1:4127
-curl -I http://127.0.0.1:4127/wasm/daneel.js
-```
-
-### Headless browser verification
-
-Prefer the repo verifier over raw `google-chrome --dump-dom` when you need a trustworthy answer about hydration.
-
-Use the verifier in `scripts/verify-route.mjs` because it:
-
-- uses Playwright to drive the page through normal browser APIs
-- uses the system `google-chrome` binary instead of Playwright's bundled browser
-- waits for the page to finish hydrating
-- waits for the hashed `/assets/main-*.css` stylesheet to be present
-- waits for the page background styling to be applied
-- lets you declare required text and forbidden text
-- writes both a screenshot and the final hydrated DOM
-
-Example for the agents route:
-
-```bash
-npm run verify:route -- \
-  --url http://127.0.0.1:4127/agents \
-  --screenshot /tmp/daneel-agents-live.png \
-  --dom /tmp/daneel-agents-live.html \
-  --wait-text "Agent tiles" \
-  --wait-text "email" \
-  --forbid-text "Loading agents" \
-  --forbid-text "Gateway lookup failed"
-```
-
-Use raw `google-chrome --dump-dom` only as a quick secondary signal.
-
-To confirm the page hydrates and renders actual app DOM:
-
-```bash
-timeout 25s google-chrome --headless=new --disable-gpu --no-sandbox --virtual-time-budget=15000 --dump-dom http://127.0.0.1:4127
-```
-
-For route verification:
-
-```bash
-timeout 25s google-chrome --headless=new --disable-gpu --no-sandbox --virtual-time-budget=15000 --dump-dom http://127.0.0.1:4127/agents
-```
-
-Expected signals of success:
-
-- the HTML title is `Daneel`
-- the DOM contains app content under `#main`
-- the dashboard route includes `Mission Control` and `Dashboard`
-- the agents route includes `Agents`
-- the hydrated DOM includes a hashed stylesheet under `/assets/main-*.css`
-- the served stylesheet begins with the Tailwind banner for `tailwindcss v4`
-- the dashboard gateway card renders a real status result from the Dioxus server function
-
-Important lessons:
-
-- `curl` and raw SSR HTML do not prove hydration; they can still show `Loading agents` or `Connecting`
-- a screenshot taken too early can be misleading even when the app is fine
-- if the verifier times out, inspect the saved DOM and the dev-server logs before trusting the screenshot result
-- if the live route never leaves a loading state, verify that `/wasm/daneel.js` is serving correctly before blaming the UI
-
-### Gateway status verification
-
-The first live backend slice is the dashboard gateway status card.
-
-Run the app:
-
-```bash
-npm run dev
-```
-
-Then open `/` and verify the card labeled `Gateway status` renders one of:
-
-- `Connected to the OpenClaw Gateway over WebSocket.` once in the top gateway summary row (not repeated in the detail panel when healthy)
-- a degraded state with a specific gateway/config error message
-
-Known-good healthy render signals:
-
-- summary row: large `Healthy` plus the connection line above
-- detail panel: fetch path, `Gateway URL`, and uptime (no second healthy badge or duplicate headline sentence)
-- `Gateway URL: ws://127.0.0.1:18789/`
-- a live uptime value in milliseconds
-
-This flow depends on the local OpenClaw config at `~/.openclaw/openclaw.json`, specifically:
-
-- `gateway.port`
-- `gateway.auth.token`
-
-### Screenshot-based verification
-
-Use screenshots as a manual visual verification step before committing UI work, especially when checking the live app against real OpenClaw data.
-
-Do not treat screenshot capture as part of the automated mock-gateway integration suite. The automated path should stay focused on DOM/HTML and SSE assertions.
-
-### Reliable live screenshot workflow
-
-Use this order for efficient and trustworthy manual verification:
-
-1. Start a fresh app instance on the fixed port:
-
-```bash
-npm start
-```
-
-2. Verify the app and browser assets are reachable:
-
-```bash
-curl -I http://127.0.0.1:4127
-curl -I http://127.0.0.1:4127/wasm/daneel.js
-```
-
-3. Capture the route through `scripts/verify-route.mjs`, not raw `--screenshot`, so the capture waits for hydration.
-
-4. Inspect both the screenshot and the saved DOM.
-
-5. Only if the verifier succeeds should the screenshot be treated as the final visual proof.
-
-When checking the real live app, use route-specific wait text that proves real data loaded:
-
-- dashboard: require `Gateway status`
-- dashboard: require `Connected to the OpenClaw Gateway over WebSocket`
-- agents: require `Agent tiles`
-- agents: require one or more real agent ids like `email` or `calendar`
-- agents: forbid `Loading agents`
-- agents: forbid `Gateway lookup failed`
-
-If the screenshot disagrees with the backend:
-
-- verify the backend directly with the manual live test:
-
-```bash
-cargo test --features server live_gateway_status_fetch_reports_healthy -- --ignored --nocapture
-```
-
-- inspect the gateway journal for live bridge handshake problems:
-
-```bash
-journalctl -u openclaw-gateway.service --since '5 minutes ago' --no-pager
-```
-
-This is especially important for the top-right ribbon. A stale dev process can keep sending an old invalid handshake and make the ribbon look degraded even after the source code is fixed.
-
-To verify the rendered UI visually, run the app and capture screenshots with headless Chrome.
-
-Start the app with the full dev workflow:
-
-```bash
-npm start
-```
-
-Preferred screenshot capture for the home route:
-
-```bash
-npm run verify:route -- \
-  --url http://127.0.0.1:4127/ \
-  --screenshot /tmp/daneel-home.png \
-  --dom /tmp/daneel-home.html \
-  --wait-text "Mission Control" \
-  --wait-text "Gateway status"
-```
-
-Preferred screenshot capture for the agents route:
-
-```bash
-npm run verify:route -- \
-  --url http://127.0.0.1:4127/agents \
-  --screenshot /tmp/daneel-agents.png \
-  --dom /tmp/daneel-agents.html \
-  --wait-text "Agent tiles" \
-  --wait-text "email" \
-  --forbid-text "Loading agents" \
-  --forbid-text "Gateway lookup failed"
-```
-
-Preferred screenshot capture for the dashboard with live gateway status:
-
-```bash
-npm run verify:route -- \
-  --url http://127.0.0.1:4127/ \
-  --screenshot /tmp/daneel-dashboard-gateway.png \
-  --dom /tmp/daneel-dashboard-gateway.html \
-  --wait-text "Gateway status" \
-  --wait-text "Connected to the OpenClaw Gateway over WebSocket"
-```
-
-What to verify from the screenshots:
-
-- the page is not blank
-- the sidebar renders with Daneel branding and navigation
-- the active route is visually highlighted
-- the top bar and status pill are visible
-- the top-right ribbon says `Connected` in green when the live gateway is healthy
-- the page-specific content is present
-- Tailwind styling is clearly applied to spacing, typography, cards, borders, and colors
-
-What to verify from the saved DOM:
-
-- the required wait text is present in hydrated markup
-- loading placeholders are gone
-- route-specific failure text is absent
-- the status pill text matches the expected state
-
-Avoid this anti-pattern:
-
-- capturing `/tmp/*.png` with raw `google-chrome --screenshot` before hydration and then trusting the image
-
-Environment note:
-
-- keep `google-chrome` installed on the machine and let Playwright drive that binary
-- do not rely on Playwright's bundled Chromium in this environment; the system Chrome path is the stable option here
-
-That approach is fast, but it frequently captures SSR-only placeholders and leads to false conclusions.
-
-Known-good screenshot outputs used during validation:
-
-- `/tmp/daneel-home.png`
-- `/tmp/daneel-agents.png`
-- `/tmp/daneel-dashboard-gateway.png`
-
-## Known Current State
-
-As of the current scaffold:
-
-- the app shell renders successfully in the browser
-- the dashboard and agents routes hydrate correctly
-- the dashboard fetches gateway status through a Dioxus server function
-- the gateway status request reaches OpenClaw over loopback WebSocket
-- styling is loaded through the Dioxus asset pipeline
-- there is now a mock-gateway cargo integration test for route DOM/HTML and live SSE behavior
-- there is no OpenClaw adapter yet
-- there is not yet a full Rust unit/integration suite beyond the SSR harness and the mock-gateway browser path
-
-## Development Guidance
-
-When extending the project:
-
-- keep the app as a Rust-first Dioxus application
-- prefer typed routes and shared Rust models
-- preserve the separation between route components and shared shell components
-- keep visual changes aligned with the existing custom mission-control styling direction
-- use the design docs before inventing new architecture
-- do not assume backend or OpenClaw behavior exists unless it is implemented in this repo
-
-Planned next major areas from the design docs:
-
-- minimal adapter capability contract
-- broader server-function backbone
-- graph-oriented agents view
-- deterministic testing support
-
-## File-Level Orientation
-
-Quick map of the current UI code:
-
-- `src/main.rs`: launches the app and mounts the router
-- `src/gateway.rs`: gateway config loading, WS handshake, and `get_gateway_status()`
-- `src/router.rs`: defines `Route` and route labels
-- `src/components/layout.rs`: wraps all pages with sidebar and top bar
-- `src/components/sidebar.rs`: primary navigation
-- `src/components/navbar.rs`: current page title and status pill
-- `src/pages/dashboard.rs`: gateway status server-function card and dashboard content
-- `src/pages/agents.rs`: placeholder agents page
-- `src/pages/settings.rs`: placeholder settings page
-- `src/pages/not_found.rs`: fallback route UI
-- `assets/main.css`: all current theme and layout styles
-- `styles/app.css`: Tailwind 4 source file and theme tokens
-
-## Git Hygiene
-
-Ignored by `.gitignore`:
-
-- `target/`
-- editor swap files
-- local env files
-- common IDE folders
-- log files
-
-Do not commit generated build output.
-
-## If You Are Continuing Implementation
-
-Recommended first checks before changing code:
-
-```bash
-git status --short
-npm run build:css
-cargo check
-```
-
-Recommended final checks after changes:
-
-```bash
-npm run build:css
-cargo fmt --all
-cargo check
-```
-
-If you change routing, rendering, or asset loading, also do a browser smoke test with `dx serve --web`.
-
-## Test Cadence
-
-Prefer a two-speed testing workflow while developing:
-
-- run the fast Rust tests often during implementation
-- run the heavier browser integration path before committing
-
-During normal development, use:
-
-```bash
-cargo test
-```
-
-Before committing code, make sure all formatting and warnings are cleaned up first, then run:
-
-```bash
-npm run build:css
-cargo fmt --all
-cargo check --features server
-cargo test --test e2e_mock_gateway
-dx serve --web --fullstack --addr 127.0.0.1 --port 4127 --open false
-```
-
-If any test is failing or hanging, stop and repair the test or the implementation before committing. Do not commit code while knowingly leaving the suite broken.
-
-If the change affects UI presentation, do a manual live-data visual pass after the automated checks by capturing and inspecting screenshots yourself.
-
-Expectations before commit:
-
-- code is formatted
-- warnings are removed, not ignored
-- all relevant tests pass before commit; repair broken tests instead of working around them
-- the mock-gateway integration test passes
-- the app is verified to start successfully with `dx serve --web --fullstack`
-- UI changes get a manual screenshot-based visual check against the live app before commit
-
-For the required end-of-task execution order, including the mandatory refactoring pass,
-the post-task memory sweep, and the requirement to run visual acceptance verification
-last, follow `docs/agent-workflows/DANEEL_WORKFLOW.md`.
+Run `cargo test` often while coding; run `cargo test --test e2e_mock_gateway` and workflow-defined gates before push. UI changes: manual hydrated verification and screenshots per [`docs/agent-guides/verification-and-browser.md`](docs/agent-guides/verification-and-browser.md).
