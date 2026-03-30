@@ -1,4 +1,4 @@
-# Agent Memory
+# Agentic Memory
 
 <!-- Curated subset suitable for inclusion in AGENTS.md.
      One-line previews; follow links for full markdown in section files.
