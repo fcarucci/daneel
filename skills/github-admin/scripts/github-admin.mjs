@@ -1193,8 +1193,8 @@ async function ensureRelease(options) {
     tag,
     name: options.name,
     body: options.body,
-    draft: options.draft ?? true,
-    prerelease: options.prerelease ?? true,
+    draft: Boolean(options.draft),
+    prerelease: Boolean(options.prerelease),
   });
 
   console.log(
